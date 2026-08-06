@@ -1,0 +1,70 @@
+name: LichenGH
+version: 0.8.0
+authors:
+  - Yibin Yang
+description: |
+  **Lichen creates a shared language between Grasshopper definitions and coding agents.**
+
+  Lichen is designed to fit into the Grasshopper workflow you already know. You continue to create and revise the definition in Grasshopper. When you want outside help, Lichen communicates only the part of the workflow you selected to the AI of your choice. It does not give the AI control of the canvas or take over the scripting process. You decide what to share, which suggestions to use, and how to apply them, so the Grasshopper definition remains under your control.
+
+  **To use Lichen:**
+
+  1. Select the Grasshopper components you want help understanding, troubleshooting, or developing further.
+  2. Open Lichen and click **Copy Markdown**.
+  3. Paste the Markdown into Claude, Codex, or any AI coding agent or chat together with your question or request.
+
+  The agent receives structured context about the selected components, connections, settings, dependencies, scripts, warnings, and surrounding workflow. Lichen does not send anything automatically.
+
+  Developed by Yibin Yang at Adrian Smith + Gordon Gill Architecture (AS+GG), Lichen reflects experience with computational design practice and the need for clearer exchange between visual definitions and coding workflows.
+
+  Like its biological namesake, a lichen exists through cooperation between different systems. The plugin plays a similar role: it forms a quiet connective layer between Grasshopper's visual graph and tools that work best with structured text. It is infrastructure for handoff, not an AI assistant embedded in the canvas.
+
+  **Design principles**
+
+  - **The Grasshopper workflow stays yours:** Lichen communicates the selected context without giving an AI control of the canvas or scripting process. You decide whether and how to apply the response.
+  - **Tool-agnostic context, not an AI chat:** Lichen does not connect to an AI provider and does not confine the handoff to one assistant or conversation.
+  - **Inspectable before sharing:** exports are ordinary Markdown and JSON, so you remain in control of what leaves the definition.
+  - **Local-first and read-only:** no account, API key, network connection, telemetry, canvas mutation, or forced Grasshopper solution.
+  - **Deterministic output:** the same captured graph state and options produce stable artifacts suitable for comparison and version control.
+  - **Semantic rather than purely structural:** Lichen reports graph structure together with important settings, dependencies, scripts, clusters, boundaries, and cautious execution/workflow context.
+  - **Persistent visual scope:** the Lichen Export Root marks a named upstream workflow. Selecting it highlights exactly the contributing chain without changing the definition.
+
+  **Export scopes**
+
+  - Selected objects only
+  - Immediate upstream
+  - All upstream
+  - Entire document
+  - Persistent, nickname-labeled Lichen Export Roots
+
+  **Detail levels**
+
+  - **Brief** communicates purpose, workflow, boundaries, warnings, and dependencies.
+  - **Technical** adds component inventory, important settings, noteworthy runtime counts, scripts, workflow regions, and execution notes.
+  - **Exact** includes every captured object and connection plus the complete JSON graph.
+
+  **Clusters and custom scripts**
+
+  Lichen can inspect unprotected clusters as bounded nested graphs. Password-protected clusters remain opaque: Lichen never requests or attempts a password, and reports only their visible interface and surrounding connections. Accessible C# and Python source can be included deliberately; Lichen reports unsupported access safely instead of executing or compiling scripts.
+
+  **Privacy and behavior**
+
+  Lichen runs locally. It does not serialize full geometry, access the network, call an AI model, modify the canvas, alter wires, change component states, or force a solution. A 500-object limit keeps each scope bounded, and truncation is disclosed in the export and highlight.
+
+  **Version 0.8.0 highlights**
+
+  - Persistent Lichen Export Root component with named scopes
+  - Exact contributing-upstream highlighting for components and item/list/tree wires
+  - Root-specific export from double-click, context menu, or the main Lichen dialog
+  - Deterministic branch, reconnection, cycle, duplicate-edge, multi-root, and 500-object handling
+  - Export Root metadata in schema 0.5 while keeping the marker itself out of exported nodes and edges
+url: "https://github.com/yang-yibinn/Lichen"
+icon: icon.png
+keywords:
+  - grasshopper
+  - context
+  - markdown
+  - json
+  - coding-agent
+  - documentation
+  - read-only

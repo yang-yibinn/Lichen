@@ -1,0 +1,38 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2013
+VisualStudioVersion = 12.0.21005.1
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lichen.Core", "src\Lichen.Core\Lichen.Core.csproj", "{485CD65C-9966-4C71-BC7B-A7C51E2B8C2E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lichen.Adapters", "src\Lichen.Adapters\Lichen.Adapters.csproj", "{836B55C1-F68F-4E64-B4CE-8E82A33B64AD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lichen.Plugin", "src\Lichen.Plugin\Lichen.Plugin.csproj", "{0C767D06-072D-4872-959E-5746C76F4933}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lichen.Tests", "tests\Lichen.Tests\Lichen.Tests.csproj", "{A7DFA6BD-6655-47A4-8BB2-1893B86BA30E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{485CD65C-9966-4C71-BC7B-A7C51E2B8C2E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{485CD65C-9966-4C71-BC7B-A7C51E2B8C2E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{485CD65C-9966-4C71-BC7B-A7C51E2B8C2E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{485CD65C-9966-4C71-BC7B-A7C51E2B8C2E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{836B55C1-F68F-4E64-B4CE-8E82A33B64AD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{836B55C1-F68F-4E64-B4CE-8E82A33B64AD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{836B55C1-F68F-4E64-B4CE-8E82A33B64AD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{836B55C1-F68F-4E64-B4CE-8E82A33B64AD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0C767D06-072D-4872-959E-5746C76F4933}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0C767D06-072D-4872-959E-5746C76F4933}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0C767D06-072D-4872-959E-5746C76F4933}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0C767D06-072D-4872-959E-5746C76F4933}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A7DFA6BD-6655-47A4-8BB2-1893B86BA30E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A7DFA6BD-6655-47A4-8BB2-1893B86BA30E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A7DFA6BD-6655-47A4-8BB2-1893B86BA30E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A7DFA6BD-6655-47A4-8BB2-1893B86BA30E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
+

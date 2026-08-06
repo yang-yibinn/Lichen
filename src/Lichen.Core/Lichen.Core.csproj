@@ -1,0 +1,8 @@
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup><Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration><Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform><ProjectGuid>{485CD65C-9966-4C71-BC7B-A7C51E2B8C2E}</ProjectGuid><OutputType>Library</OutputType><RootNamespace>Lichen.Core</RootNamespace><AssemblyName>Lichen.Core</AssemblyName><TargetFrameworkVersion>v4.8</TargetFrameworkVersion></PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "><OutputPath>bin\Debug\</OutputPath><DebugSymbols>true</DebugSymbols><DebugType>full</DebugType><Optimize>false</Optimize></PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "><OutputPath>bin\Release\</OutputPath><DebugType>pdbonly</DebugType><Optimize>true</Optimize></PropertyGroup>
+  <ItemGroup><Reference Include="System"/><Reference Include="System.Core"/><Reference Include="System.Runtime.Serialization"/><Reference Include="System.Xml"/></ItemGroup>
+  <ItemGroup><Compile Include="Models.cs"/><Compile Include="ExportRootTraversal.cs"/><Compile Include="GraphAlgorithms.cs"/><Compile Include="ExecutionSemanticsAnalyzer.cs"/><Compile Include="Exporters.cs"/><Compile Include="SafeScriptSourceReader.cs"/><Compile Include="ScriptBehaviorAnalyzer.cs"/><Compile Include="Properties\AssemblyInfo.cs"/></ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>
