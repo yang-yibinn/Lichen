@@ -12,7 +12,7 @@ namespace Lichen.Core
     {
         public ContextDocument()
         {
-            SchemaVersion = "0.5"; Name = "Untitled"; RhinoVersion = ""; GrasshopperVersion = "";
+            SchemaVersion = "0.6"; Name = "Untitled"; RhinoVersion = ""; GrasshopperVersion = "";
             Scope = new ContextScope(); UserContext = new ContextUserContext(); Nodes = new List<ContextNode>();
             Edges = new List<ContextEdge>(); BoundaryInputs = new List<ContextBoundaryPort>();
             BoundaryOutputs = new List<ContextBoundaryPort>(); Groups = new List<ContextGroup>();
@@ -32,6 +32,17 @@ namespace Lichen.Core
         [DataMember(Name="dependencies", Order=12)] public List<ContextDependency> Dependencies { get; set; }
         [DataMember(Name="analysis", Order=13)] public ContextAnalysis Analysis { get; set; }
         [DataMember(Name="extractionNotes", Order=14)] public List<string> ExtractionNotes { get; set; }
+        [DataMember(Name="exportSignature", Order=15, EmitDefaultValue=false)] public ContextExportSignature ExportSignature { get; set; }
+    }
+
+    [DataContract]
+    public sealed class ContextExportSignature
+    {
+        public ContextExportSignature() { Product = "Lichen"; ExporterVersion = ""; FingerprintAlgorithm = "sha256"; ContextFingerprint = ""; }
+        [DataMember(Name="product", Order=1)] public string Product { get; set; }
+        [DataMember(Name="exporterVersion", Order=2)] public string ExporterVersion { get; set; }
+        [DataMember(Name="fingerprintAlgorithm", Order=3)] public string FingerprintAlgorithm { get; set; }
+        [DataMember(Name="contextFingerprint", Order=4)] public string ContextFingerprint { get; set; }
     }
 
     [DataContract]
@@ -126,7 +137,7 @@ namespace Lichen.Core
     [DataContract]
     public sealed class ContextParameter
     {
-        public ContextParameter() { Name = ""; Nickname = ""; Description = ""; Direction = ""; AccessMode = ""; TypeHint = ""; PersistentDataSummary = ""; RuntimeDataSummary = ""; Expression = ""; }
+        public ContextParameter() { Name = ""; Nickname = ""; Description = ""; Direction = ""; AccessMode = ""; TypeHint = ""; PersistentDataSummary = ""; RuntimeDataSummary = ""; RuntimeTreeShape = ""; Expression = ""; }
         [DataMember(Name="index", Order=1)] public int Index { get; set; }
         [DataMember(Name="name", Order=2)] public string Name { get; set; }
         [DataMember(Name="nickname", Order=3)] public string Nickname { get; set; }
@@ -144,6 +155,7 @@ namespace Lichen.Core
         [DataMember(Name="simplify", Order=15)] public bool Simplify { get; set; }
         [DataMember(Name="reverse", Order=16)] public bool Reverse { get; set; }
         [DataMember(Name="runtimeDataSummary", Order=17)] public string RuntimeDataSummary { get; set; }
+        [DataMember(Name="runtimeTreeShape", Order=18)] public string RuntimeTreeShape { get; set; }
     }
 
     [DataContract]
@@ -276,7 +288,7 @@ namespace Lichen.Core
 
     public sealed class ContextExportOptions
     {
-        public ContextExportOptions() { ScopeMode = ScopeMode.SelectedOnly; DetailLevel = DetailLevel.Technical; MaximumNodes = 500; IncludeScriptSource = true; IncludeRuntimeSummary = true; RootObjectId = ""; RootLabel = ""; ClusterPurposeNotes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); }
+        public ContextExportOptions() { ScopeMode = ScopeMode.SelectedOnly; DetailLevel = DetailLevel.Technical; MaximumNodes = 500; IncludeScriptSource = true; IncludeRuntimeSummary = true; RootObjectId = ""; RootLabel = ""; ExporterVersion = "0.8.1"; ClusterPurposeNotes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); }
         public ScopeMode ScopeMode { get; set; }
         public DetailLevel DetailLevel { get; set; }
         public int MaximumNodes { get; set; }
@@ -288,6 +300,7 @@ namespace Lichen.Core
         public string Constraints { get; set; }
         public string RootObjectId { get; set; }
         public string RootLabel { get; set; }
+        public string ExporterVersion { get; set; }
         public Dictionary<string, string> ClusterPurposeNotes { get; set; }
     }
 

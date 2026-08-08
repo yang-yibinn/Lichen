@@ -1,4 +1,4 @@
-# Lichen 0.8.0
+# Lichen 0.8.1
 
 **Lichen creates a shared language between Grasshopper definitions and coding agents.**
 
@@ -21,10 +21,10 @@ Like its biological namesake, a lichen exists through cooperation between differ
 - **The Grasshopper workflow stays yours:** Lichen communicates the selected context without giving an AI control of the canvas or scripting process. You decide whether and how to apply the response.
 - **Tool-agnostic context, not an AI chat:** Lichen does not connect to an AI provider and does not confine the handoff to one assistant or conversation.
 - **Inspectable before sharing:** exports are ordinary Markdown and JSON, so you remain in control of what leaves the definition.
-- **Local-first and read-only:** no account, API key, network connection, telemetry, canvas mutation, or forced Grasshopper solution.
+- **Local-first and read-only:** no account, API key, network connection, telemetry, definition mutation, or forced Grasshopper solution.
 - **Deterministic output:** the same captured graph state and options produce stable artifacts suitable for comparison and version control.
 - **Semantic rather than purely structural:** Lichen reports graph structure together with important settings, dependencies, scripts, clusters, boundaries, and cautious execution/workflow context.
-- **Persistent visual scope:** the Lichen Export Root marks a named upstream workflow. Selecting it highlights exactly the contributing chain without changing the definition.
+- **Persistent visual scope:** the Lichen Export Root marks a named upstream workflow. Selecting it highlights exactly the contributing chain without changing the definition. The explicit **Select chain** action selects that chain and its Lichen marker for normal Grasshopper move or group operations.
 
 ## Export scopes
 
@@ -46,15 +46,15 @@ Lichen can inspect unprotected clusters as bounded nested graphs. Password-prote
 
 ## Privacy and behavior
 
-Lichen runs locally. It does not serialize full geometry, access the network, call an AI model, modify the canvas, alter wires, change component states, or force a solution. A 500-object limit keeps each scope bounded, and truncation is disclosed in the export and highlight.
+Lichen runs locally. It does not serialize full geometry, access the network, call an AI model, modify definition content, alter wires, change component states, or force a solution. Capture, highlighting, and export never change selection; selection changes only after the user explicitly invokes **Select chain**. A 500-object limit keeps each scope bounded, and truncation is disclosed in the export and highlight.
 
-## Version 0.8.0 highlights
+## Version 0.8.1 highlights
 
-- Persistent Lichen Export Root component with named scopes
-- Exact contributing-upstream highlighting for components and item/list/tree wires
-- Root-specific export from double-click, context menu, or the main Lichen dialog
-- Deterministic branch, reconnection, cycle, duplicate-edge, multi-root, and 500-object handling
-- Export Root metadata in schema 0.5 while keeping the marker itself out of exported nodes and edges
+- **Select chain** from the Lichen component menu or its Grasshopper middle-click radial companion
+- Schema 0.6 provenance seals for deterministic Markdown and Exact JSON verification
+- Bounded data-tree shape reporting focused on meaningful origins, operations, and topology changes
+- Broader workflow-purpose synthesis using graph stages, scripts, clusters, and iterative regions
+- Clearer Export Root results, numeric controls, colliding labels, and exact character and UTF-8 byte sizes
 
 ## Package Manager installation
 

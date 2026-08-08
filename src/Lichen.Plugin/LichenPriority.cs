@@ -14,11 +14,14 @@ namespace Lichen.Plugin
         public override GH_LoadingInstruction PriorityLoad()
         {
             Instances.CanvasCreated += OnCanvasCreated;
+            Instances.CanvasDestroyed += OnCanvasDestroyed;
+            LichenRadialMenuController.Attach(Instances.ActiveCanvas);
             return GH_LoadingInstruction.Proceed;
         }
 
         private static void OnCanvasCreated(GH_Canvas canvas)
         {
+            LichenRadialMenuController.Attach(canvas);
             try
             {
                 Form editor = Instances.DocumentEditor;
@@ -30,6 +33,11 @@ namespace Lichen.Plugin
             {
                 // Menu setup must never prevent Grasshopper from loading other plugins.
             }
+        }
+
+        private static void OnCanvasDestroyed(GH_Canvas canvas)
+        {
+            LichenRadialMenuController.Detach(canvas);
         }
 
         private static void InstallMenu(Form editor)

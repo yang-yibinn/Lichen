@@ -17,13 +17,12 @@ namespace Lichen.Plugin
         internal const int OutlineOpacity = 255;
         internal const int WireOpacity = 255;
         internal const float ComponentBandSize = 10F;
-        private const int MaximumNodes = 500;
         private static readonly Color LichenGreen = Color.FromArgb(64, 181, 50);
         private static readonly Color LichenEdge = Color.FromArgb(35, 126, 31);
         private static readonly Color LichenBody = Color.FromArgb(48, 108, 42);
         private static readonly Color LichenSelectedBody = Color.FromArgb(104, 214, 83);
         private static readonly Color LichenBodyEdge = Color.FromArgb(28, 78, 25);
-        private static readonly Bitmap ComponentIcon = CreateWhiteIcon(LichenInfo.CreateIconCopy());
+        private static readonly Bitmap ComponentIcon = LichenInfo.CreateWhiteIconCopy();
         private GrasshopperExportRootScope currentPaintScope;
         private GH_Document currentPaintDocument;
 
@@ -42,8 +41,9 @@ namespace Lichen.Plugin
             LayoutInputParams(Owner, m_innerBounds);
             if (Owner.Params.Input.Count > 0 && Owner.Params.Input[0].Attributes != null)
             {
-                Owner.Params.Input[0].Attributes.Pivot = new PointF(m_innerBounds.Left, m_innerBounds.Top + 20F);
-                Owner.Params.Input[0].Attributes.PerformLayout();
+                IGH_Attributes inputAttributes = Owner.Params.Input[0].Attributes;
+                inputAttributes.Pivot = new PointF(m_innerBounds.Left, m_innerBounds.Top + 20F);
+                inputAttributes.Bounds = new RectangleF(m_innerBounds.Left, m_innerBounds.Top, 12F, m_innerBounds.Height);
             }
             RectangleF bounds = m_innerBounds; bounds.Inflate(6F, 2F); Bounds = bounds;
         }
@@ -78,7 +78,7 @@ namespace Lichen.Plugin
                     .Where(o => o.Attributes != null && o.Attributes.Selected).Select(o => o.InstanceGuid.ToString("D"))
                     .OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
                 if (selectedRoots.Count == 0 || !String.Equals(selectedRoots[0], Owner.InstanceGuid.ToString("D"), StringComparison.OrdinalIgnoreCase)) return null;
-                return new GrasshopperExportRootAdapter().Resolve(canvas.Document, selectedRoots, MaximumNodes);
+                return new GrasshopperExportRootAdapter().Resolve(canvas.Document, selectedRoots, LichenExportRootComponent.MaximumNodes);
             }
             catch { return null; }
         }
@@ -147,22 +147,6 @@ namespace Lichen.Plugin
                     graphics.DrawString("X", inputFont, textBrush, inputBox, format);
                 if (ComponentIcon != null) graphics.DrawImage(ComponentIcon, iconBox);
             }
-        }
-
-        private static Bitmap CreateWhiteIcon(Bitmap source)
-        {
-            if (source == null) return null;
-            Bitmap result = new Bitmap(source.Width, source.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-            for (int y = 0; y < source.Height; y++)
-            {
-                for (int x = 0; x < source.Width; x++)
-                {
-                    int alpha = source.GetPixel(x, y).A;
-                    result.SetPixel(x, y, Color.FromArgb(alpha, 255, 255, 255));
-                }
-            }
-            source.Dispose();
-            return result;
         }
 
         private static void DrawComponentBand(Graphics graphics, RectangleF bounds, Brush band, Pen outline)

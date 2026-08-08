@@ -23,13 +23,13 @@ Developed by Yibin Yang at Adrian Smith + Gordon Gill Architecture (AS+GG).
 2. Choose **Lichen → Copy Context…** and click **Copy Markdown**.
 3. Paste the Markdown into the coding agent or chat of your choice together with your question or request.
 
-For a persistent scope, place the **Lichen** component at the end of a workflow, connect the result to X, and double-click the component. Selecting an Export Root highlights exactly the upstream chain included in its export without changing the definition.
+For a persistent scope, place the **Lichen** component at the end of a workflow, connect the result to X, and double-click the component. Selecting an Export Root highlights exactly the upstream chain included in its export without changing the definition. Choose **Select chain** from the component's right-click menu, or from the Lichen companion button attached to Grasshopper's middle-click radial menu, to replace the selection with the highlighted chain and its selected Lichen marker or markers.
 
-Lichen supports selected-only, immediate-upstream, all-upstream, entire-document, and persistent Export Root scopes. Brief, Technical, and Exact detail levels range from a concise workflow handoff to a complete JSON-backed graph representation. The Exact JSON contract is documented in [`docs/context-schema.md`](docs/context-schema.md).
+Lichen supports selected-only, immediate-upstream, all-upstream, entire-document, and persistent Export Root scopes. Brief, Technical, and Exact detail levels range from a concise workflow handoff to a complete JSON-backed graph representation. Technical output disambiguates colliding cluster and port labels and reports bounded, already-computed data-tree paths when they carry useful topology. Every export includes a deterministic Lichen provenance seal, and the dialog reports exact Markdown and JSON character and UTF-8 byte sizes. The Exact JSON contract is documented in [`docs/context-schema.md`](docs/context-schema.md).
 
 ## Privacy and behavior
 
-Lichen runs locally. It does not serialize full geometry, access the network, call an AI model, send telemetry, modify the canvas, alter wires or component states, or force a Grasshopper solution. Password-protected clusters remain opaque, and safely accessible C# and Python source is read without executing or compiling it.
+Lichen runs locally. It does not serialize full geometry, access the network, call an AI model, send telemetry, modify definition content, alter wires or component states, or force a Grasshopper solution. Capture, highlighting, and export never change selection. Selection changes only after the user explicitly invokes **Select chain**; that command changes selection alone so the user can move or group the chain with Grasshopper's normal tools. Password-protected clusters remain opaque, and safely accessible C# and Python source is read without executing or compiling it.
 
 ## Build
 

@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.Serialization.Json;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -55,6 +57,62 @@ namespace Lichen.Core
         private static void Indent(StringBuilder builder, int depth) { builder.Append(new string(' ', Math.Max(0, depth) * 2)); }
     }
 
+    public static class RuntimeTreeShapeFormatter
+    {
+        public static string Format(int totalPathCount, IList<string> paths, IList<int> itemCounts)
+        {
+            int captured = Math.Min(totalPathCount, Math.Min(paths == null ? 0 : paths.Count, itemCounts == null ? 0 : itemCounts.Count));
+            if (totalPathCount <= 0 || captured == 0) return "";
+
+            string first, last;
+            int commonCount;
+            bool regular = TryRegularSequence(paths.Take(captured).ToList(), itemCounts.Take(captured).ToList(), out first, out last, out commonCount);
+            string prefix = totalPathCount + (totalPathCount == 1 ? " path" : " paths");
+            string result;
+            if (regular)
+            {
+                result = prefix + (totalPathCount > captured ? "; first " + captured + ": " : ": ")
+                    + first + " through " + last + " (" + Items(commonCount) + " each)";
+            }
+            else
+            {
+                List<string> samples = new List<string>();
+                for (int i = 0; i < captured; i++) samples.Add(paths[i] + " (" + Items(itemCounts[i]) + ")");
+                result = prefix + (totalPathCount > captured ? "; first " + captured + ": " : ": ") + String.Join(", ", samples.ToArray());
+            }
+            if (totalPathCount > captured) result += "; " + (totalPathCount - captured) + " additional paths not listed";
+            return result;
+        }
+
+        private static bool TryRegularSequence(IList<string> paths, IList<int> counts, out string first, out string last, out int commonCount)
+        {
+            first = ""; last = ""; commonCount = 0;
+            if (paths == null || counts == null || paths.Count < 2 || paths.Count != counts.Count) return false;
+            List<int[]> indices = new List<int[]>();
+            foreach (string path in paths)
+            {
+                Match match = Regex.Match(path ?? "", @"^\{(-?\d+(?:;-?\d+)*)\}$");
+                if (!match.Success) return false;
+                int[] parsed;
+                try { parsed = match.Groups[1].Value.Split(';').Select(Int32.Parse).ToArray(); }
+                catch { return false; }
+                if (parsed.Length == 0 || indices.Count > 0 && parsed.Length != indices[0].Length) return false;
+                indices.Add(parsed);
+            }
+            int expectedCount = counts[0];
+            if (counts.Any(count => count != expectedCount)) return false;
+            commonCount = expectedCount;
+            for (int i = 1; i < indices.Count; i++)
+            {
+                for (int j = 0; j < indices[i].Length - 1; j++) if (indices[i][j] != indices[0][j]) return false;
+                if (indices[i][indices[i].Length - 1] != indices[0][indices[0].Length - 1] + i) return false;
+            }
+            first = paths[0]; last = paths[paths.Count - 1]; return true;
+        }
+
+        private static string Items(int count) { return count + (count == 1 ? " item" : " items"); }
+    }
+
     public sealed class MarkdownComposer
     {
         public string Compose(ContextDocument document, ContextExportOptions options, string json)
@@ -76,11 +134,16 @@ namespace Lichen.Core
                 text.AppendLine("- Export Root: " + EscapeInline(String.IsNullOrWhiteSpace(document.Scope.RootLabel) ? "Lichen" : document.Scope.RootLabel));
                 text.AppendLine("- Connected X sources: " + (document.Scope.RootSourceObjectIds == null ? 0 : document.Scope.RootSourceObjectIds.Count));
             }
-            text.AppendLine("- Originally selected objects: " + document.Scope.SelectedObjectIds.Count);
+            if (!String.Equals(document.Scope.Mode, "export_root", StringComparison.OrdinalIgnoreCase))
+                text.AppendLine("- Originally selected objects: " + document.Scope.SelectedObjectIds.Count);
             text.AppendLine("- Included objects: " + document.Nodes.Count);
             text.AppendLine("- Incoming boundary connections: " + document.BoundaryInputs.Count);
             text.AppendLine("- Outgoing boundary connections: " + document.BoundaryOutputs.Count);
             if (document.Scope.NodeLimitReached) text.AppendLine("- Warning: the configured node limit was reached.");
+            text.AppendLine();
+
+            Section(text, "Lichen Provenance Seal");
+            WriteProvenanceSeal(text, document);
             text.AppendLine();
 
             Section(text, "Author Signals"); WriteAuthorSignals(text, document); text.AppendLine();
@@ -94,9 +157,9 @@ namespace Lichen.Core
             WriteWorkflowSummary(text, document);
             text.AppendLine();
             Section(text, "Cluster Internals"); WriteClusterInternals(text, document, options.DetailLevel, options.IncludeScriptSource); text.AppendLine();
-            Section(text, "Effective Outputs"); WriteBoundaries(text, document.BoundaryOutputs, options.DetailLevel); text.AppendLine();
+            Section(text, "Effective Outputs"); WriteEffectiveOutputs(text, document, options.DetailLevel); text.AppendLine();
 
-            Section(text, "Data-Tree and Parameter Behavior"); WriteParameterBehavior(text, document); text.AppendLine();
+            Section(text, "Data-Tree and Parameter Behavior"); WriteParameterBehavior(text, document, options.DetailLevel); text.AppendLine();
             Section(text, "Runtime Data Summary"); WriteRuntimeDataSummary(text, document, options.DetailLevel); text.AppendLine();
             Section(text, "Custom Scripts"); WriteScripts(text, document, options.IncludeScriptSource); text.AppendLine();
             Section(text, "Runtime Warnings and Errors"); WriteRuntimeMessages(text, document); text.AppendLine();
@@ -150,29 +213,170 @@ namespace Lichen.Core
                 text.AppendLine("- " + duplicate.Key + (duplicate.Count() > 1 ? " (" + duplicate.Count() + " separate connections)" : ""));
         }
 
-        private static void WriteParameterBehavior(StringBuilder text, ContextDocument document)
+        private static void WriteEffectiveOutputs(StringBuilder text, ContextDocument document, DetailLevel level)
+        {
+            if (!String.Equals(document.Scope.Mode, "export_root", StringComparison.OrdinalIgnoreCase))
+            {
+                WriteBoundaries(text, document.BoundaryOutputs, level);
+                return;
+            }
+
+            Dictionary<string, ContextNode> nodes = document.Nodes.ToDictionary(n => n.InstanceId, StringComparer.OrdinalIgnoreCase);
+            List<string> sourceIds = document.Scope.RootSourceObjectIds ?? new List<string>();
+            if (sourceIds.Count == 0)
+            {
+                text.AppendLine("No component connected to the Export Root X input was captured.");
+                return;
+            }
+            foreach (string sourceId in sourceIds)
+            {
+                ContextNode source;
+                string label;
+                if (!nodes.TryGetValue(sourceId, out source)) label = "object `" + sourceId + "`";
+                else if (source.Outputs.Count == 1) label = NodePortLabel(document, source, DisplayName(source.Outputs[0]), "output");
+                else label = DisambiguatedNodeLabel(document, source) + " (connected output)";
+                text.AppendLine("- Export Root result: " + EscapeInline(label) + " → Lichen.X");
+            }
+        }
+
+        private static void WriteParameterBehavior(StringBuilder text, ContextDocument document, DetailLevel level)
         {
             bool any = false;
+            HashSet<string> emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, ContextNode> nodesById = document.Nodes.ToDictionary(node => node.InstanceId, StringComparer.OrdinalIgnoreCase);
             foreach (ContextNode node in document.Nodes)
             {
-                if (!String.IsNullOrWhiteSpace(node.PersistentValueSummary) && !String.Equals(node.Name, "Panel", StringComparison.OrdinalIgnoreCase) && !String.Equals(node.Name, "Scribble", StringComparison.OrdinalIgnoreCase))
+                if (!String.IsNullOrWhiteSpace(node.PersistentValueSummary) && !String.Equals(node.Name, "Scribble", StringComparison.OrdinalIgnoreCase)
+                    && (!String.Equals(node.Name, "Panel", StringComparison.OrdinalIgnoreCase) || IsDataLikePanel(node)))
                 {
-                    any = true;
-                    text.AppendLine("- " + EscapeInline(ValueNodeLabel(document, node)) + ": " + EscapeInline(node.PersistentValueSummary));
+                    string line = "- " + EscapeInline(ValueNodeLabel(document, node)) + ": " + EscapeInline(PersistentValueForPresentation(node));
+                    if (emitted.Add(line)) { any = true; text.AppendLine(line); }
                 }
-                foreach (ContextParameter parameter in node.Inputs.Concat(node.Outputs))
+                List<ContextParameter> parameters = node.Inputs.Concat(node.Outputs).ToList();
+                List<List<ContextParameter>> treeGroups = level == DetailLevel.Brief
+                    ? new List<List<ContextParameter>>()
+                    : parameters.Where(p => ShouldPresentRuntimeTreeShape(document, nodesById, node, p, level)).GroupBy(p => p.RuntimeTreeShape).Select(g => g.ToList()).ToList();
+                Dictionary<ContextParameter, string> mergedFacts = new Dictionary<ContextParameter, string>();
+                foreach (List<ContextParameter> group in treeGroups)
+                {
+                    List<string> facts = group.Select(NonRuntimeParameterFacts).Distinct(StringComparer.Ordinal).ToList();
+                    if (facts.Count == 1 && !String.IsNullOrWhiteSpace(facts[0])) foreach (ContextParameter parameter in group) mergedFacts[parameter] = facts[0];
+                }
+                foreach (ContextParameter parameter in parameters)
                 {
                     if (IsStandaloneValueNode(node) && !String.IsNullOrWhiteSpace(node.PersistentValueSummary) && !HasModifier(parameter)) continue;
-                    if (!parameter.Flatten && !parameter.Graft && !parameter.Simplify && !parameter.Reverse && String.IsNullOrWhiteSpace(parameter.Expression) && String.IsNullOrWhiteSpace(parameter.PersistentDataSummary)) continue;
-                    any = true;
-                    List<string> flags = new List<string>();
-                    if (parameter.Flatten) flags.Add("flatten"); if (parameter.Graft) flags.Add("graft"); if (parameter.Simplify) flags.Add("simplify"); if (parameter.Reverse) flags.Add("reverse");
-                    if (!String.IsNullOrWhiteSpace(parameter.Expression)) flags.Add("expression: " + parameter.Expression);
-                    if (!String.IsNullOrWhiteSpace(parameter.PersistentDataSummary)) flags.Add("persistent data: " + parameter.PersistentDataSummary);
-                    text.AppendLine("- " + EscapeInline(DisplayName(node)) + "." + EscapeInline(DisplayName(parameter)) + ": " + EscapeInline(String.Join(", ", flags.ToArray())));
+                    string facts = NonRuntimeParameterFacts(parameter);
+                    if (String.IsNullOrWhiteSpace(facts) || mergedFacts.ContainsKey(parameter)) continue;
+                    bool includeDirection = CrossDirectionFactsDiffer(node, parameter, NonRuntimeParameterFacts);
+                    string label = NodePortLabel(document, node, DisplayName(parameter), parameter.Direction) + (includeDirection ? " (" + parameter.Direction + ")" : "");
+                    string line = "- " + EscapeInline(label) + ": " + EscapeInline(facts);
+                    if (emitted.Add(line)) { any = true; text.AppendLine(line); }
+                }
+
+                if (level == DetailLevel.Brief) continue;
+                foreach (List<ContextParameter> grouped in treeGroups)
+                {
+                    List<string> ports = grouped.Select(parameter =>
+                    {
+                        bool includeDirection = CrossDirectionFactsDiffer(node, parameter, p => p.RuntimeTreeShape ?? "");
+                        return DisplayName(parameter) + (includeDirection ? " (" + parameter.Direction + ")" : "");
+                    }).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                    bool ownerCollision = grouped.Any(parameter => NodePortLabelCollides(document, node, DisplayName(parameter), parameter.Direction));
+                    string owner = DisplayName(node) + (ownerCollision ? " [" + ShortId(node.InstanceId) + "]" : "");
+                    string label = ports.Count == 1 ? owner + "." + ports[0] : owner + " \u2014 " + JoinBounded(ports, 6);
+                    string sharedFacts;
+                    bool hasSharedFacts = mergedFacts.TryGetValue(grouped[0], out sharedFacts);
+                    string line = "- " + EscapeInline(label) + ": " + (hasSharedFacts ? EscapeInline(sharedFacts) + ", " : "") + "runtime tree: " + EscapeInline(grouped[0].RuntimeTreeShape);
+                    if (emitted.Add(line)) { any = true; text.AppendLine(line); }
                 }
             }
-            if (!any) text.AppendLine("No noteworthy parameter modifiers or persistent-data summaries were extracted.");
+            if (!any) text.AppendLine(level == DetailLevel.Brief
+                ? "No noteworthy parameter modifiers or persistent data were extracted."
+                : "No noteworthy parameter modifiers, persistent data, or runtime tree shapes were extracted.");
+        }
+
+        private static string NonRuntimeParameterFacts(ContextParameter parameter)
+        {
+            List<string> flags = new List<string>();
+            if (parameter.Flatten) flags.Add("flatten"); if (parameter.Graft) flags.Add("graft"); if (parameter.Simplify) flags.Add("simplify"); if (parameter.Reverse) flags.Add("reverse");
+            if (!String.IsNullOrWhiteSpace(parameter.Expression)) flags.Add("expression: " + parameter.Expression);
+            if (!String.IsNullOrWhiteSpace(parameter.PersistentDataSummary)) flags.Add("persistent data: " + parameter.PersistentDataSummary);
+            return String.Join(", ", flags.ToArray());
+        }
+
+        private static bool CrossDirectionFactsDiffer(ContextNode node, ContextParameter parameter, Func<ContextParameter, string> facts)
+        {
+            IEnumerable<ContextParameter> counterparts = String.Equals(parameter.Direction, "input", StringComparison.OrdinalIgnoreCase) ? node.Outputs : node.Inputs;
+            string name = DisplayName(parameter); string value = facts(parameter) ?? "";
+            return counterparts.Any(other => String.Equals(DisplayName(other), name, StringComparison.OrdinalIgnoreCase)
+                && !String.Equals(facts(other) ?? "", value, StringComparison.Ordinal));
+        }
+
+        private static bool ShouldPresentRuntimeTreeShape(ContextDocument document, Dictionary<string, ContextNode> nodesById, ContextNode node, ContextParameter parameter, DetailLevel level)
+        {
+            if (parameter == null || String.IsNullOrWhiteSpace(parameter.RuntimeTreeShape) || level == DetailLevel.Brief) return false;
+            if (level == DetailLevel.Exact || HasModifier(parameter) || IsExplicitTreeOperation(node)) return true;
+            Match count = Regex.Match(parameter.RuntimeTreeShape, @"^(\d+) paths?");
+            int paths;
+            if (CrossDirectionFactsDiffer(node, parameter, p => p.RuntimeTreeShape ?? "")) return true;
+            if (!count.Success || !Int32.TryParse(count.Groups[1].Value, out paths) || paths <= 1) return false;
+            return IsRuntimeTreeTransition(document, nodesById, node, parameter);
+        }
+
+        private static bool IsRuntimeTreeTransition(ContextDocument document, Dictionary<string, ContextNode> nodesById, ContextNode node, ContextParameter parameter)
+        {
+            List<string> related = RelatedRuntimeTreeShapes(document, nodesById, node, parameter).Where(shape => !String.IsNullOrWhiteSpace(shape)).ToList();
+            if (related.Count == 0) return true;
+            if (related.Any(shape => String.Equals(shape, parameter.RuntimeTreeShape, StringComparison.Ordinal))) return false;
+            string topology = TreeTopologySignature(parameter.RuntimeTreeShape);
+            if (related.All(shape => !String.Equals(TreeTopologySignature(shape), topology, StringComparison.Ordinal))) return true;
+            return IsIrregularTreeShape(parameter.RuntimeTreeShape);
+        }
+
+        private static IEnumerable<string> RelatedRuntimeTreeShapes(ContextDocument document, Dictionary<string, ContextNode> nodesById, ContextNode node, ContextParameter parameter)
+        {
+            if (String.Equals(parameter.Direction, "output", StringComparison.OrdinalIgnoreCase))
+                return node.Inputs.Select(input => input.RuntimeTreeShape);
+
+            if (document == null) return Enumerable.Empty<string>();
+            List<string> shapes = new List<string>();
+            foreach (ContextEdge edge in document.Edges.Where(edge => String.Equals(edge.TargetNodeId, node.InstanceId, StringComparison.OrdinalIgnoreCase)
+                && ParameterMatches(edge.TargetParameterIndex, edge.TargetParameterName, parameter)))
+            {
+                ContextNode source;
+                if (!nodesById.TryGetValue(edge.SourceNodeId, out source)) continue;
+                ContextParameter sourceParameter = source.Outputs.FirstOrDefault(output => ParameterMatches(edge.SourceParameterIndex, edge.SourceParameterName, output));
+                if (sourceParameter != null) shapes.Add(sourceParameter.RuntimeTreeShape);
+            }
+            return shapes;
+        }
+
+        private static bool ParameterMatches(int index, string name, ContextParameter parameter)
+        {
+            if (parameter == null) return false;
+            if (!String.IsNullOrWhiteSpace(name) && (String.Equals(name, parameter.Name, StringComparison.OrdinalIgnoreCase)
+                || String.Equals(name, parameter.Nickname, StringComparison.OrdinalIgnoreCase))) return true;
+            return index == parameter.Index;
+        }
+
+        private static string TreeTopologySignature(string shape)
+        {
+            string withoutCounts = Regex.Replace(shape ?? "", @"\s*\(\d+\s+items?(?:\s+each)?\)", "", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            return Regex.Replace(withoutCounts, @"\s+", " ").Trim();
+        }
+
+        private static bool IsIrregularTreeShape(string shape)
+        {
+            MatchCollection counts = Regex.Matches(shape ?? "", @"\((\d+)\s+items?(?:\s+each)?\)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (counts.Cast<Match>().Select(match => match.Groups[1].Value).Distinct(StringComparer.Ordinal).Count() > 1) return true;
+            return Regex.Matches(shape ?? "", @"\{[^}]+\}", RegexOptions.CultureInvariant).Count > 1
+                && (shape ?? "").IndexOf(" through ", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
+        private static bool IsExplicitTreeOperation(ContextNode node)
+        {
+            string[] names = { "Graft Tree", "Flatten Tree", "Unflatten Tree", "Shift Paths", "Tree Branch", "Entwine", "Path Mapper", "Replace Paths", "Split Tree", "Simplify Tree", "Trim Tree", "Flip Matrix" };
+            return node != null && names.Contains(node.Name, StringComparer.OrdinalIgnoreCase);
         }
 
         private static void WriteClusterInternals(StringBuilder text, ContextDocument document, DetailLevel level, bool includeScriptSource)
@@ -235,8 +439,12 @@ namespace Lichen.Core
                 foreach (IGrouping<string, ContextParameter> group in parameters.Where(p => !String.IsNullOrWhiteSpace(p.RuntimeDataSummary) && (level == DetailLevel.Exact || IsNoteworthyRuntime(p.RuntimeDataSummary))).GroupBy(p => p.RuntimeDataSummary))
                 {
                     any = true;
-                    string names = String.Join(", ", group.Select(DisplayName).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
-                    text.AppendLine("- " + EscapeInline(DisplayName(node)) + " — " + EscapeInline(names) + ": " + EscapeInline(ReadableRuntime(group.Key)));
+                    List<ContextParameter> groupedParameters = group.ToList();
+                    string names = String.Join(", ", groupedParameters.Select(DisplayName).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+                    string owner = groupedParameters.Any(p => NodePortLabelCollides(document, node, DisplayName(p), p.Direction))
+                        ? DisplayName(node) + " [" + ShortId(node.InstanceId) + "]"
+                        : DisplayName(node);
+                    text.AppendLine("- " + EscapeInline(owner) + " — " + EscapeInline(names) + ": " + EscapeInline(ReadableRuntime(group.Key)));
                 }
             }
             if (!any) text.AppendLine("No noteworthy already-computed runtime data was captured.");
@@ -334,12 +542,17 @@ namespace Lichen.Core
                 if (region.CarriedValues.Count > 0) line += " Carries: " + EscapeInline(JoinBounded(region.CarriedValues, 6)) + ".";
                 if (level == DetailLevel.Exact) line += " Start `" + region.StartNodeId + "`; end `" + region.EndNodeId + "`.";
                 text.AppendLine(line);
+                if (level != DetailLevel.Brief)
+                {
+                    List<string> members = RegionMemberLabels(document, region);
+                    if (members.Count > 0) text.AppendLine(indent + "  - Contains: " + EscapeInline(JoinBounded(members, 10)) + ".");
+                }
             }
-            IEnumerable<IGrouping<string, ContextExecutionComponent>> componentGroups = semantics.Components.GroupBy(c => c.NodeName + "|" + c.Kind + "|" + c.Behavior, StringComparer.OrdinalIgnoreCase);
+            IEnumerable<IGrouping<string, ContextExecutionComponent>> componentGroups = semantics.Components.GroupBy(c => ExecutionComponentLabel(document, c) + "|" + c.Kind + "|" + c.Behavior, StringComparer.OrdinalIgnoreCase);
             foreach (IGrouping<string, ContextExecutionComponent> group in componentGroups)
             {
                 ContextExecutionComponent component = group.First();
-                string line = "- " + EscapeInline(component.NodeName) + " [" + EscapeInline(component.Kind.Replace('_', ' ')) + "]: " + EscapeInline(component.Behavior);
+                string line = "- " + EscapeInline(ExecutionComponentLabel(document, component)) + " [" + EscapeInline(component.Kind.Replace('_', ' ')) + "]: " + EscapeInline(component.Behavior);
                 if (level == DetailLevel.Exact)
                     line += " Node" + (group.Count() == 1 ? " `" + component.NodeId + "`" : "s " + String.Join(", ", group.Select(c => "`" + c.NodeId + "`").ToArray())) + ".";
                 else if (group.Count() > 1) line += " (" + group.Count() + " components)";
@@ -354,8 +567,10 @@ namespace Lichen.Core
                 text.AppendLine("The following is a condensed dataflow-operation summary, not literal execution order. See Workflow Structure above.\n");
             if (document.Analysis.DetectedOperations.Count == 0) { text.AppendLine("No operations were extracted."); return; }
             List<string> ordered = new List<string>(); Dictionary<string, int> counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            foreach (string operation in document.Analysis.DetectedOperations)
+            Dictionary<string, List<ContextNode>> collidingClusters = CollidingClusters(document);
+            foreach (string rawOperation in document.Analysis.DetectedOperations)
             {
+                string operation = CorrelateClusterOperation(rawOperation, collidingClusters, document);
                 if (!counts.ContainsKey(operation)) { counts.Add(operation, 0); ordered.Add(operation); }
                 counts[operation]++;
             }
@@ -366,12 +581,79 @@ namespace Lichen.Core
             }
         }
 
+        private static void WriteProvenanceSeal(StringBuilder text, ContextDocument document)
+        {
+            ContextExportSignature signature = document.ExportSignature;
+            if (signature == null || String.IsNullOrWhiteSpace(signature.ContextFingerprint))
+            {
+                text.AppendLine("No provenance seal was generated.");
+                return;
+            }
+            text.AppendLine("- Product: `" + EscapeInline(signature.Product) + "`");
+            text.AppendLine("- Exporter: `" + EscapeInline(signature.ExporterVersion) + "`");
+            text.AppendLine("- Schema: `" + EscapeInline(document.SchemaVersion) + "`");
+            text.AppendLine("- Context seal: `LCHN-" + signature.ContextFingerprint.Substring(0, Math.Min(12, signature.ContextFingerprint.Length)).ToUpperInvariant() + "`");
+            text.AppendLine("- Verification: deterministic SHA-256 content fingerprint; no timestamp, user, machine, or file-path data is included.");
+        }
+
+        private static List<string> RegionMemberLabels(ContextDocument document, ContextExecutionRegion region)
+        {
+            Dictionary<string, ContextNode> nodes = document.Nodes.ToDictionary(n => n.InstanceId, StringComparer.OrdinalIgnoreCase);
+            List<ContextNode> clusters = document.Nodes.Where(n => n.ClusterGraph != null).ToList();
+            List<string> labels = new List<string>();
+            foreach (string id in region.NodeIds.Where(id => !String.Equals(id, region.StartNodeId, StringComparison.OrdinalIgnoreCase) && !String.Equals(id, region.EndNodeId, StringComparison.OrdinalIgnoreCase)))
+            {
+                ContextNode node;
+                if (!nodes.TryGetValue(id, out node)) continue;
+                labels.Add(node.ClusterGraph == null ? DisambiguatedNodeLabel(document, node) : ClusterDisplayLabel(node, clusters));
+            }
+            return labels.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        private static string ExecutionComponentLabel(ContextDocument document, ContextExecutionComponent component)
+        {
+            ContextNode node = document.Nodes.FirstOrDefault(n => String.Equals(n.InstanceId, component.NodeId, StringComparison.OrdinalIgnoreCase));
+            if (node == null) return component.NodeName;
+            if (node.ClusterGraph != null) return ClusterDisplayLabel(node, document.Nodes.Where(n => n.ClusterGraph != null).ToList());
+            return component.NodeName;
+        }
+
+        private static Dictionary<string, List<ContextNode>> CollidingClusters(ContextDocument document)
+        {
+            return document.Nodes.Where(n => n.ClusterGraph != null)
+                .GroupBy(DisplayName, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1)
+                .ToDictionary(g => g.Key, g => g.OrderBy(n => n.InstanceId, StringComparer.OrdinalIgnoreCase).ToList(), StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static string CorrelateClusterOperation(string operation, Dictionary<string, List<ContextNode>> clusters, ContextDocument document)
+        {
+            foreach (KeyValuePair<string, List<ContextNode>> pair in clusters.OrderByDescending(p => p.Key.Length))
+            {
+                string prefix = pair.Key + ":";
+                if (!operation.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) || pair.Value.Count == 0) continue;
+                ContextNode node = pair.Value.FirstOrDefault(n => ClusterOperationMatches(operation, n)) ?? pair.Value[0];
+                pair.Value.Remove(node);
+                return ClusterDisplayLabel(node, document.Nodes.Where(n => n.ClusterGraph != null).ToList()) + operation.Substring(pair.Key.Length);
+            }
+            return operation;
+        }
+
+        private static bool ClusterOperationMatches(string operation, ContextNode node)
+        {
+            if (node.ClusterGraph == null) return false;
+            if (!String.IsNullOrWhiteSpace(node.ClusterGraph.BlackBoxSummary))
+                return operation.IndexOf(node.ClusterGraph.BlackBoxSummary, StringComparison.Ordinal) >= 0;
+            if (node.ClusterGraph.Analysis == null) return false;
+            string evidence = node.ClusterGraph.Analysis.DetectedOperations.FirstOrDefault(o => !String.IsNullOrWhiteSpace(o));
+            return !String.IsNullOrWhiteSpace(evidence) && operation.IndexOf(evidence.Trim().TrimEnd('.', ';', ':'), StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
         private static void WriteRuntimeMessages(StringBuilder text, ContextDocument document)
         {
             bool any = false;
             foreach (ContextNode node in document.Nodes)
                 foreach (ContextRuntimeMessage message in node.RuntimeMessages)
-                { any = true; text.AppendLine("- " + EscapeInline(message.Level) + " — " + EscapeInline(DisplayName(node)) + ": " + EscapeInline(message.Message)); }
+                { any = true; text.AppendLine("- " + EscapeInline(message.Level) + " — " + EscapeInline(DisambiguatedNodeLabel(document, node)) + ": " + EscapeInline(message.Message)); }
             if (!any) text.AppendLine("No captured runtime warnings or errors.");
         }
 
@@ -382,7 +664,8 @@ namespace Lichen.Core
             {
                 any = true; text.AppendLine("- Group “" + EscapeInline(group.Name) + "”: " + group.MemberIds.Count + " members");
             }
-            foreach (ContextNode node in document.Nodes.Where(n => (String.Equals(n.Name, "Panel", StringComparison.OrdinalIgnoreCase) || String.Equals(n.Name, "Scribble", StringComparison.OrdinalIgnoreCase)) && !String.IsNullOrWhiteSpace(n.PersistentValueSummary)))
+            foreach (ContextNode node in document.Nodes.Where(n => (String.Equals(n.Name, "Scribble", StringComparison.OrdinalIgnoreCase)
+                || String.Equals(n.Name, "Panel", StringComparison.OrdinalIgnoreCase) && !IsDataLikePanel(n)) && !String.IsNullOrWhiteSpace(n.PersistentValueSummary)))
             {
                 any = true; text.AppendLine("- " + EscapeInline(ValueNodeLabel(document, node)) + ": " + EscapeInline(node.PersistentValueSummary));
             }
@@ -418,9 +701,14 @@ namespace Lichen.Core
             }
             else
             {
-                text.AppendLine("| Component | Nickname | Assembly | Selected | Inputs | Outputs |");
-                text.AppendLine("|---|---|---|---:|---:|---:|");
-                foreach (ContextNode node in document.Nodes.Where(n => !IsCanvasGroup(n))) text.AppendLine("| " + EscapeTable(node.Name) + " | " + EscapeTable(DisplayName(node)) + " | " + EscapeTable(node.AssemblyName) + " | " + (node.OriginallySelected ? "yes" : "no") + " | " + node.Inputs.Count + " | " + node.Outputs.Count + " |");
+                bool rootScope = String.Equals(document.Scope.Mode, "export_root", StringComparison.OrdinalIgnoreCase);
+                text.AppendLine(rootScope ? "| Component | Nickname | Assembly | Inputs | Outputs |" : "| Component | Nickname | Assembly | Selected | Inputs | Outputs |");
+                text.AppendLine(rootScope ? "|---|---|---|---:|---:|" : "|---|---|---|---:|---:|---:|");
+                foreach (ContextNode node in document.Nodes.Where(n => !IsCanvasGroup(n)))
+                {
+                    string prefix = "| " + EscapeTable(node.Name) + " | " + EscapeTable(DisambiguatedNodeLabel(document, node)) + " | " + EscapeTable(node.AssemblyName) + " | ";
+                    text.AppendLine(rootScope ? prefix + node.Inputs.Count + " | " + node.Outputs.Count + " |" : prefix + (node.OriginallySelected ? "yes" : "no") + " | " + node.Inputs.Count + " | " + node.Outputs.Count + " |");
+                }
             }
         }
 
@@ -448,6 +736,26 @@ namespace Lichen.Core
         }
 
         private static bool HasModifier(ContextParameter parameter) { return parameter.Flatten || parameter.Graft || parameter.Simplify || parameter.Reverse || !String.IsNullOrWhiteSpace(parameter.Expression); }
+        private static bool IsDataLikePanel(ContextNode node)
+        {
+            if (node == null || !String.Equals(node.Name, "Panel", StringComparison.OrdinalIgnoreCase) || String.IsNullOrWhiteSpace(node.PersistentValueSummary)) return false;
+            string value = node.PersistentValueSummary.Trim();
+            if (value.StartsWith("text=", StringComparison.OrdinalIgnoreCase)) value = value.Substring(5).Trim();
+            string[] tokens = Regex.Split(value, @"[\s,;{}\[\]\(\)]+", RegexOptions.CultureInvariant).Where(token => token.Length > 0).ToArray();
+            if (tokens.Length == 0) return false;
+            return tokens.All(IsInvariantNumber) || IsInvariantRange(value);
+        }
+        private static bool IsInvariantRange(string value)
+        {
+            Match match = Regex.Match(value ?? "", @"^\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s+(?:to|through)\s+([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            return match.Success && IsInvariantNumber(match.Groups[1].Value) && IsInvariantNumber(match.Groups[2].Value);
+        }
+        private static bool IsInvariantNumber(string value) { double parsed; return Double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out parsed); }
+        private static string PersistentValueForPresentation(ContextNode node)
+        {
+            string summary = node == null ? "" : node.PersistentValueSummary ?? "";
+            return IsDataLikePanel(node) && summary.StartsWith("text=", StringComparison.OrdinalIgnoreCase) ? "value=" + summary.Substring(5).Trim() : summary;
+        }
         private static bool IsStandaloneValueNode(ContextNode node)
         {
             string[] names = { "Number Slider", "Integer Slider", "Boolean Toggle", "Panel", "Value List", "Number", "Integer", "Boolean", "Text", "Surface", "Curve", "Point", "Brep", "Geometry" };
@@ -497,7 +805,7 @@ namespace Lichen.Core
             foreach (ContextEdge edge in document.Edges.Where(e => String.Equals(e.SourceNodeId, node.InstanceId, StringComparison.OrdinalIgnoreCase)))
             {
                 ContextNode target;
-                if (nodes.TryGetValue(edge.TargetNodeId, out target)) targets.Add(DisplayName(target) + "." + (String.IsNullOrWhiteSpace(edge.TargetParameterName) ? "input" : edge.TargetParameterName));
+                if (nodes.TryGetValue(edge.TargetNodeId, out target)) targets.Add(NodePortLabel(document, target, String.IsNullOrWhiteSpace(edge.TargetParameterName) ? "input" : edge.TargetParameterName, "input"));
                 else
                 {
                     ContextBoundaryPort boundary = document.BoundaryOutputs.FirstOrDefault(p => String.Equals(p.InternalNodeId, node.InstanceId, StringComparison.OrdinalIgnoreCase) && String.Equals(p.ExternalNodeId, edge.TargetNodeId, StringComparison.OrdinalIgnoreCase));
@@ -506,6 +814,38 @@ namespace Lichen.Core
             }
             targets = targets.Where(t => !String.IsNullOrWhiteSpace(t)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             return targets.Count == 0 ? DisplayName(node) : DisplayName(node) + " → " + JoinBounded(targets, 3);
+        }
+
+        private static string NodePortLabel(ContextDocument document, ContextNode node, string parameterName, string direction)
+        {
+            string owner = DisplayName(node);
+            if (NodePortLabelCollides(document, node, parameterName, direction)) owner += " [" + ShortId(node.InstanceId) + "]";
+            return owner + "." + (String.IsNullOrWhiteSpace(parameterName) ? "Unnamed parameter" : parameterName);
+        }
+
+        private static string DisambiguatedNodeLabel(ContextDocument document, ContextNode node)
+        {
+            string label = DisplayName(node);
+            if (document != null && document.Nodes.Any(other => !String.Equals(other.InstanceId, node.InstanceId, StringComparison.OrdinalIgnoreCase)
+                && String.Equals(DisplayName(other), label, StringComparison.OrdinalIgnoreCase))) label += " [" + ShortId(node.InstanceId) + "]";
+            return label;
+        }
+
+        private static bool NodePortLabelCollides(ContextDocument document, ContextNode node, string parameterName, string direction)
+        {
+            if (document == null || node == null) return false;
+            string owner = DisplayName(node);
+            return document.Nodes.Any(other => !String.Equals(other.InstanceId, node.InstanceId, StringComparison.OrdinalIgnoreCase)
+                && String.Equals(DisplayName(other), owner, StringComparison.OrdinalIgnoreCase)
+                && ParametersForDirection(other, direction).Any(p => String.Equals(DisplayName(p), parameterName, StringComparison.OrdinalIgnoreCase)
+                    || String.Equals(p.Name, parameterName, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        private static IEnumerable<ContextParameter> ParametersForDirection(ContextNode node, string direction)
+        {
+            if (String.Equals(direction, "input", StringComparison.OrdinalIgnoreCase)) return node.Inputs;
+            if (String.Equals(direction, "output", StringComparison.OrdinalIgnoreCase)) return node.Outputs;
+            return node.Inputs.Concat(node.Outputs);
         }
 
         private static bool IsPassiveRuntimeNode(ContextNode node)
@@ -545,8 +885,26 @@ namespace Lichen.Core
         {
             ContextDocument document = new ContextGraphService().BuildDocument(snapshot, options);
             ContextJsonSerializer jsonSerializer = new ContextJsonSerializer();
+            document.ExportSignature = null;
+            string unsignedJson = jsonSerializer.Serialize(document);
+            document.ExportSignature = new ContextExportSignature
+            {
+                Product = "Lichen",
+                ExporterVersion = String.IsNullOrWhiteSpace(options.ExporterVersion) ? "unknown" : options.ExporterVersion.Trim(),
+                FingerprintAlgorithm = "sha256",
+                ContextFingerprint = Sha256(unsignedJson)
+            };
             string json = jsonSerializer.Serialize(document);
             return new ContextExportPackage { Document = document, Json = json, Markdown = new MarkdownComposer().Compose(document, options, json) };
+        }
+
+        private static string Sha256(string value)
+        {
+            using (SHA256 algorithm = SHA256.Create())
+            {
+                byte[] hash = algorithm.ComputeHash(Encoding.UTF8.GetBytes(value ?? ""));
+                return String.Concat(hash.Select(b => b.ToString("x2")));
+            }
         }
     }
 }

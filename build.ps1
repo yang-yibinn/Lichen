@@ -1,8 +1,8 @@
 param([switch]$SkipTests)
 
 $ErrorActionPreference = 'Stop'
-$releaseLabel = '0.8.0'
-$releaseVersion = '0.8.0.0'
+$releaseLabel = '0.8.1'
+$releaseVersion = '0.8.1.0'
 $workspace = Split-Path -Parent $MyInvocation.MyCommand.Path
 $compiler = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $rhino = 'C:\Program Files\Rhino 8\System\RhinoCommon.dll'
@@ -11,6 +11,8 @@ $ghio = 'C:\Program Files\Rhino 8\Plug-ins\Grasshopper\GH_IO.dll'
 $yak = 'C:\Program Files\Rhino 8\System\Yak.exe'
 $pluginIcon = Join-Path $workspace 'src\Lichen.Plugin\Assets\lichen-icon-24.png'
 $pluginIconResourceName = 'Lichen.Plugin.Assets.lichen-icon-24.png'
+$selectChainIcon = Join-Path $workspace 'src\Lichen.Plugin\Assets\lichen-select-chain.svg'
+$selectChainIconResourceName = 'Lichen.Plugin.Assets.lichen-select-chain.svg'
 $yakTemplate = Join-Path $workspace 'packaging\yak'
 $yakManifest = Join-Path $yakTemplate 'manifest.yml'
 $yakReadme = Join-Path $yakTemplate 'README.md'
@@ -22,7 +24,7 @@ $yakPackage = Join-Path $artifacts 'yak\Lichen'
 $archive = Join-Path $artifacts ('Lichen-' + $releaseLabel + '.zip')
 $checksum = Join-Path $artifacts ('Lichen-' + $releaseLabel + '.sha256')
 
-foreach ($required in @($compiler, $rhino, $grasshopper, $ghio, $yak, $pluginIcon, $yakManifest, $yakReadme, $yakIcon)) {
+foreach ($required in @($compiler, $rhino, $grasshopper, $ghio, $yak, $pluginIcon, $selectChainIcon, $yakManifest, $yakReadme, $yakIcon)) {
     if (-not (Test-Path -LiteralPath $required)) { throw "Required build dependency not found: $required" }
 }
 
@@ -38,6 +40,11 @@ try {
 }
 finally {
     $iconBitmap.Dispose()
+}
+
+[xml]$selectChainSvg = Get-Content -Raw -LiteralPath $selectChainIcon
+if ($selectChainSvg.DocumentElement.LocalName -ne 'svg' -or $selectChainSvg.DocumentElement.viewBox -ne '0 0 24 24') {
+    throw "Select chain icon must be a valid SVG with a 0 0 24 24 viewBox."
 }
 
 function Assert-ArtifactPath([string]$Path) {
@@ -78,11 +85,14 @@ $adapterSources = Get-ChildItem -LiteralPath (Join-Path $workspace 'src\Lichen.A
 Invoke-Compiler ($compilerDefaults + @('/target:library', ('/out:' + (Join-Path $output 'Lichen.Adapters.dll')), ('/r:' + (Join-Path $output 'Lichen.Core.dll')), ('/r:' + $rhino), ('/r:' + $grasshopper), ('/r:' + $ghio), '/r:System.Drawing.dll') + $adapterSources)
 
 $pluginSources = Get-ChildItem -LiteralPath (Join-Path $workspace 'src\Lichen.Plugin') -Recurse -Filter '*.cs' | Sort-Object FullName | ForEach-Object { $_.FullName }
-Invoke-Compiler ($compilerDefaults + @('/target:library', ('/out:' + (Join-Path $output 'Lichen.dll')), ('/resource:' + $pluginIcon + ',' + $pluginIconResourceName), ('/r:' + (Join-Path $output 'Lichen.Core.dll')), ('/r:' + (Join-Path $output 'Lichen.Adapters.dll')), ('/r:' + $rhino), ('/r:' + $grasshopper), ('/r:' + $ghio), '/r:System.Drawing.dll', '/r:System.Windows.Forms.dll') + $pluginSources)
+Invoke-Compiler ($compilerDefaults + @('/target:library', ('/out:' + (Join-Path $output 'Lichen.dll')), ('/resource:' + $pluginIcon + ',' + $pluginIconResourceName), ('/resource:' + $selectChainIcon + ',' + $selectChainIconResourceName), ('/r:' + (Join-Path $output 'Lichen.Core.dll')), ('/r:' + (Join-Path $output 'Lichen.Adapters.dll')), ('/r:' + $rhino), ('/r:' + $grasshopper), ('/r:' + $ghio), '/r:System.Drawing.dll', '/r:System.Windows.Forms.dll') + $pluginSources)
 
 $pluginAssembly = [System.Reflection.Assembly]::ReflectionOnlyLoadFrom((Join-Path $output 'Lichen.dll'))
 if (-not ($pluginAssembly.GetManifestResourceNames() -contains $pluginIconResourceName)) {
     throw "Compiled plugin is missing its embedded Grasshopper icon."
+}
+if (-not ($pluginAssembly.GetManifestResourceNames() -contains $selectChainIconResourceName)) {
+    throw "Compiled plugin is missing its embedded Select chain icon."
 }
 Copy-Item -LiteralPath (Join-Path $output 'Lichen.dll') -Destination (Join-Path $output 'Lichen.gha') -Force
 

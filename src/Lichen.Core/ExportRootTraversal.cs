@@ -107,4 +107,15 @@ namespace Lichen.Core
             return edge.SourceNodeId + "|" + edge.SourceParameterIndex + "|" + edge.TargetNodeId + "|" + edge.TargetParameterIndex;
         }
     }
+
+    public sealed class ExportRootSelectionResolver
+    {
+        public List<string> Resolve(ExportRootClosure closure)
+        {
+            if (closure == null) throw new ArgumentNullException("closure");
+            return (closure.IncludedObjectIds ?? new List<string>()).Concat(closure.RootObjectIds ?? new List<string>())
+                .Where(id => !String.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+    }
 }

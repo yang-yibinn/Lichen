@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Windows.Forms;
 using Grasshopper;
 using Grasshopper.Kernel;
@@ -159,7 +160,9 @@ namespace Lichen.Plugin
             if (!before.SequenceEqual(after, StringComparer.OrdinalIgnoreCase)) throw new InvalidOperationException("The Grasshopper selection changed during export. Please try again.");
             ContextExportPackage package = new ContextExporter().Export(snapshot, options);
             watch.Stop();
-            status.ForeColor = Color.DarkGreen; status.Text = "Exported " + package.Document.Nodes.Count + " objects, " + package.Document.Edges.Count + " connections, " + package.Document.BoundaryInputs.Count + " boundary inputs, and " + package.Document.BoundaryOutputs.Count + " boundary outputs in " + watch.ElapsedMilliseconds + " ms.";
+            status.ForeColor = Color.DarkGreen;
+            status.Text = "Exported " + package.Document.Nodes.Count + " objects, " + package.Document.Edges.Count + " connections, " + package.Document.BoundaryInputs.Count + " boundary inputs, and " + package.Document.BoundaryOutputs.Count + " boundary outputs in " + watch.ElapsedMilliseconds + " ms.\n"
+                + ExportSize("Markdown", package.Markdown) + "; " + ExportSize("JSON", package.Json) + ".";
             return package;
         }
 
@@ -194,7 +197,7 @@ namespace Lichen.Plugin
         {
             clusterPurposes.EndEdit(); PersistClusterPurposes(true);
             ScopeChoice scopeChoice = (ScopeChoice)scope.SelectedItem; DetailChoice detailChoice = (DetailChoice)detail.SelectedItem;
-            ContextExportOptions options = new ContextExportOptions { ScopeMode = scopeChoice.Mode, RootObjectId = scopeChoice.RootObjectId, RootLabel = scopeChoice.RootLabel, DetailLevel = detailChoice.Level, Purpose = purpose.Text, RequestedTask = task.Text, Constraints = constraints.Text, IncludeScriptSource = scripts.Checked, IncludeRuntimeSummary = runtime.Checked, IncludeJsonAppendix = jsonAppendix.Checked || detailChoice.Level == DetailLevel.Exact, MaximumNodes = 500 };
+            ContextExportOptions options = new ContextExportOptions { ScopeMode = scopeChoice.Mode, RootObjectId = scopeChoice.RootObjectId, RootLabel = scopeChoice.RootLabel, DetailLevel = detailChoice.Level, Purpose = purpose.Text, RequestedTask = task.Text, Constraints = constraints.Text, IncludeScriptSource = scripts.Checked, IncludeRuntimeSummary = runtime.Checked, IncludeJsonAppendix = jsonAppendix.Checked || detailChoice.Level == DetailLevel.Exact, MaximumNodes = 500, ExporterVersion = LichenInfo.CurrentVersion };
             foreach (DataGridViewRow row in clusterPurposes.Rows)
             {
                 ClusterPurposeRow item = row.Tag as ClusterPurposeRow; string value = Convert.ToString(row.Cells[1].Value);
@@ -202,6 +205,13 @@ namespace Lichen.Plugin
                 foreach (string id in item.InstanceIds) options.ClusterPurposeNotes[id] = value.Trim();
             }
             return options;
+        }
+
+        private static string ExportSize(string label, string content)
+        {
+            string value = content ?? "";
+            return label + ": " + value.Length.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " chars / "
+                + Encoding.UTF8.GetByteCount(value).ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " UTF-8 bytes";
         }
 
         private void AddExportRootChoices()

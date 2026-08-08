@@ -369,14 +369,28 @@ namespace Lichen.Core
 
         private static void ApplyContentOptions(ContextNode node, ContextExportOptions options)
         {
+            if (IsDefaultPanelPrompt(node)) node.PersistentValueSummary = "";
             if (!options.IncludeRuntimeSummary)
             {
                 node.RuntimeMessages.Clear();
-                foreach (ContextParameter parameter in node.Inputs.Concat(node.Outputs)) parameter.RuntimeDataSummary = "";
+                foreach (ContextParameter parameter in node.Inputs.Concat(node.Outputs))
+                {
+                    parameter.RuntimeDataSummary = "";
+                    parameter.RuntimeTreeShape = "";
+                }
             }
             if (!options.IncludeScriptSource && node.Script != null) node.Script.Source = "";
             if (node.ClusterGraph != null)
                 foreach (ContextNode nested in node.ClusterGraph.Nodes) ApplyContentOptions(nested, options);
+        }
+
+        private static bool IsDefaultPanelPrompt(ContextNode node)
+        {
+            if (node == null || !String.Equals(node.Name, "Panel", StringComparison.OrdinalIgnoreCase) || String.IsNullOrWhiteSpace(node.PersistentValueSummary)) return false;
+            string summary = node.PersistentValueSummary.Trim();
+            if (!summary.StartsWith("text=", StringComparison.OrdinalIgnoreCase)) return false;
+            string value = summary.Substring(5).Trim().Replace("…", "...");
+            return Regex.IsMatch(value, @"^Double[- ]click to edit panel content\.{3}$", RegexOptions.IgnoreCase);
         }
 
         private static ContextParameter CloneParameter(ContextParameter source)
@@ -386,7 +400,7 @@ namespace Lichen.Core
                 Index = source.Index, Name = source.Name, Nickname = source.Nickname, Description = source.Description,
                 Direction = source.Direction, AccessMode = source.AccessMode, Optional = source.Optional, TypeHint = source.TypeHint,
                 SourceCount = source.SourceCount, RecipientCount = source.RecipientCount,
-                PersistentDataSummary = source.PersistentDataSummary, RuntimeDataSummary = source.RuntimeDataSummary,
+                PersistentDataSummary = source.PersistentDataSummary, RuntimeDataSummary = source.RuntimeDataSummary, RuntimeTreeShape = source.RuntimeTreeShape,
                 Expression = source.Expression, Flatten = source.Flatten, Graft = source.Graft,
                 Simplify = source.Simplify, Reverse = source.Reverse
             };
@@ -458,6 +472,9 @@ namespace Lichen.Core
             ,{ "Image Sampler", "samples image values at input coordinates" }, { "Average", "calculates the arithmetic mean" }
             ,{ "Graph Mapper", "maps numeric values through a user-defined graph function" }, { "Includes", "tests whether values lie inside a numeric domain" }
             ,{ "Cull Pattern", "removes list items using a repeating Boolean pattern" }
+            ,{ "Button", "provides a manual Boolean trigger" }, { "Stream Freeze / Gate", "gates downstream data flow and may retain the last received value while closed" }
+            ,{ "Loop Start", "starts an Anemone iterative region" }, { "Loop End", "ends an Anemone iterative region and controls repetition" }
+            ,{ "Fast Loop Start", "starts a bounded Anemone fast-loop region" }, { "Fast Loop End", "ends an Anemone fast-loop region" }
         };
 
         private readonly HashSet<string> passiveNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -506,37 +523,126 @@ namespace Lichen.Core
             if (ContainsAll(active, "Bounds", "Remap Numbers"))
                 analysis.DetectedPatterns.Add("Strong inference: the component sequence normalizes or rescales numeric values.");
             if (ContainsAll(active, "Quad Panels", "Image Sampler", "Cull Pattern"))
-            {
-                analysis.InferredPurpose = "Possible inference: the selected workflow creates quadrilateral panels and filters them using image-derived values.";
                 analysis.DetectedPatterns.Add("Possible inference: image-derived values control which quadrilateral panels are retained.");
+
+            List<ScriptBehaviorSummary> scriptEvidence = active.Where(n => n.Script != null).Select(ScriptBehaviorAnalyzer.Analyze).ToList();
+            List<string> scriptRoles = scriptEvidence.Select(s => s.PossibleRole).Where(r => !String.IsNullOrWhiteSpace(r))
+                .Distinct(StringComparer.OrdinalIgnoreCase).Take(4).ToList();
+            List<string> scriptDescriptions = scriptEvidence.Select(s => BoundedEvidence(s.AuthorDescription, 180)).Where(d => !String.IsNullOrWhiteSpace(d))
+                .Distinct(StringComparer.OrdinalIgnoreCase).Take(3).ToList();
+            if (scriptRoles.Count > 0) analysis.DetectedPatterns.Add("Recognized script role: " + String.Join("; ", scriptRoles.ToArray()) + ".");
+
+            List<string> clusterPurposes = active.Where(n => n.ClusterGraph != null && String.Equals(n.ClusterGraph.InspectionStatus, "inspected", StringComparison.OrdinalIgnoreCase))
+                .Select(n => n.ClusterGraph.Analysis == null ? "" : n.ClusterGraph.Analysis.InferredPurpose)
+                .Where(p => !String.IsNullOrWhiteSpace(p) && p.IndexOf("cannot be determined", StringComparison.OrdinalIgnoreCase) < 0)
+                .Select(NormalizeClusterPurpose).Distinct(StringComparer.OrdinalIgnoreCase).Take(3).ToList();
+            bool optimization = active.Any(n => (n.RuntimeTypeName ?? "").IndexOf("Galapagos", StringComparison.OrdinalIgnoreCase) >= 0
+                || (n.ControlLinks ?? new List<ContextControlLink>()).Any(l => l.Role == "genome" || l.Role == "fitness"));
+            analysis.InferredPurpose = SynthesizePurpose(active, scriptDescriptions, scriptRoles, clusterPurposes, optimization);
+            return analysis;
+        }
+
+        private static string SynthesizePurpose(List<ContextNode> active, List<string> scriptDescriptions, List<string> scriptRoles, List<string> clusterPurposes, bool optimization)
+        {
+            if (optimization && scriptRoles.Count > 0)
+            {
+                string result = "Possible inference: the selected workflow performs solver-controlled optimization whose fitness calculation may " + NaturalJoin(scriptRoles) + ".";
+                if (scriptDescriptions.Count > 0) result += " Author-provided script descriptions add: " + NaturalJoin(scriptDescriptions) + ".";
+                return result + " The broader design objective remains uncertain.";
             }
+
+            List<string> stages = new List<string>();
+            bool iterativeCurveProcessing = (ContainsAll(active, "Loop Start", "Loop End") || ContainsAll(active, "Fast Loop Start", "Fast Loop End"))
+                && active.Any(n => String.Equals(n.Name, "Discontinuity", StringComparison.OrdinalIgnoreCase)
+                    || String.Equals(n.Name, "Shatter", StringComparison.OrdinalIgnoreCase)
+                    || String.Equals(n.Name, "Tween Two Curves", StringComparison.OrdinalIgnoreCase)
+                    || String.Equals(n.Name, "Extend Curve", StringComparison.OrdinalIgnoreCase)
+                    || String.Equals(n.Name, "Trim with Region", StringComparison.OrdinalIgnoreCase));
+            if (iterativeCurveProcessing)
+            {
+                stages.Add("iterative curve processing");
+                if (ContainsAll(active, "Discontinuity", "Shatter")) stages.Add("curve segmentation at discontinuities");
+                if (Has(active, "Tween Two Curves")) stages.Add("curve tween generation");
+                if (Has(active, "Extend Curve")) stages.Add("curve extension");
+                if (Has(active, "Trim with Region")) stages.Add("region-based curve trimming");
+                if (ContainsAll(active, "Merge", "Clean Tree")) stages.Add("result accumulation and cleanup");
+            }
+            if (ContainsAll(active, "Divide Domain²", "Isotrim") || ContainsAll(active, "Divide Domain2", "Isotrim")) stages.Add("surface subdivision");
+            if (ContainsAll(active, "Bounds", "Remap Numbers")) stages.Add("numeric normalization or rescaling");
+            if (ContainsAll(active, "Project", "Divide Curve", "Perp Frame", "Rectangle", "Sweep1"))
+            {
+                stages.Add("curve projection onto Breps");
+                stages.Add("oriented section construction along divided curves");
+                stages.Add("sweep geometry construction");
+            }
+            bool curveNetworkPreparation = Has(active, "Offset Curve") && ContainsAll(active, "Discontinuity", "Shatter", "Fit Curve Smooth", "Join Curves");
+            bool intersectionAngleAnalysis = ContainsAll(active, "Curve | Curve", "Vector 2Pt", "Angle");
+            bool angleRemapping = intersectionAngleAnalysis && ContainsAll(active, "Degrees", "Remap Numbers");
+            bool variableFillet = scriptRoles.Any(role => role.IndexOf("fillet", StringComparison.OrdinalIgnoreCase) >= 0);
+            if (curveNetworkPreparation) stages.Add("curve-network offsetting, segmentation, and smoothing");
+            if (intersectionAngleAnalysis) stages.Add("intersection-angle measurement");
+            if (angleRemapping && variableFillet) stages.Add("remapping measured angles into per-location fillet radii");
+            else if (angleRemapping) stages.Add("remapping measured angles into downstream control values");
+            if (ContainsAll(active, "Quad Panels", "Image Sampler", "Cull Pattern")) stages.Add("image-driven filtering of quadrilateral panels using image-derived values");
             else
             {
-                List<string> scriptRoles = active.Where(n => n.Script != null).Select(n => ScriptBehaviorAnalyzer.Analyze(n).PossibleRole)
-                    .Where(r => !String.IsNullOrWhiteSpace(r)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-                if (analysis.DetectedPatterns.Count > 0) analysis.InferredPurpose = analysis.DetectedPatterns[0];
-                else if (scriptRoles.Count > 0)
-                {
-                    string roles = String.Join("; ", scriptRoles.ToArray());
-                    bool optimization = active.Any(n => (n.RuntimeTypeName ?? "").IndexOf("Galapagos", StringComparison.OrdinalIgnoreCase) >= 0 || (n.ControlLinks ?? new List<ContextControlLink>()).Any(l => l.Role == "genome" || l.Role == "fitness"));
-                    analysis.InferredPurpose = optimization
-                        ? "Possible inference: the selected workflow performs solver-controlled optimization whose fitness calculation may " + roles + ". The broader design objective remains uncertain."
-                        : "Possible inference from recognized script behavior: the selected workflow may " + roles + ". The broader design purpose remains uncertain.";
-                    analysis.DetectedPatterns.Add("Recognized script role: " + roles + ".");
-                }
-                else if (active.Any(n => n.ClusterGraph != null && String.Equals(n.ClusterGraph.InspectionStatus, "inspected", StringComparison.OrdinalIgnoreCase)
-                    && n.ClusterGraph.Analysis != null && !String.IsNullOrWhiteSpace(n.ClusterGraph.Analysis.InferredPurpose)
-                    && n.ClusterGraph.Analysis.InferredPurpose.IndexOf("cannot be determined", StringComparison.OrdinalIgnoreCase) < 0))
-                {
-                    List<string> clusterPurposes = active.Where(n => n.ClusterGraph != null && String.Equals(n.ClusterGraph.InspectionStatus, "inspected", StringComparison.OrdinalIgnoreCase))
-                        .Select(n => n.ClusterGraph.Analysis == null ? "" : n.ClusterGraph.Analysis.InferredPurpose)
-                        .Where(p => !String.IsNullOrWhiteSpace(p) && p.IndexOf("cannot be determined", StringComparison.OrdinalIgnoreCase) < 0)
-                        .Select(NormalizeClusterPurpose).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-                    analysis.InferredPurpose = "Possible inference from inspected cluster internals: " + String.Join(" ", clusterPurposes.ToArray());
-                }
-                else analysis.InferredPurpose = "The broader design purpose cannot be determined from the graph alone.";
+                if (Has(active, "Quad Panels")) stages.Add("quadrilateral panel generation");
+                if (ContainsAll(active, "Divide Surface", "Surface Closest Point", "Image Sampler")) stages.Add("image sampling across panel or surface coordinates");
             }
-            return analysis;
+            if (HasBlockPlacement(active)) stages.Add("block placement");
+            if (Has(active, "Group")) stages.Add("geometry grouping");
+            stages = stages.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+            if (stages.Count > 0)
+            {
+                bool boundedInterpretation = scriptDescriptions.Count > 0 || scriptRoles.Count > 0 || clusterPurposes.Count > 0
+                    || iterativeCurveProcessing || stages.Any(s => s.IndexOf("image-driven", StringComparison.OrdinalIgnoreCase) >= 0 || s.IndexOf("block placement", StringComparison.OrdinalIgnoreCase) >= 0);
+                string result = (boundedInterpretation ? "Possible inference from graph-wide evidence: " : "Strong inference from graph-wide evidence: ")
+                    + "the selected workflow combines " + NaturalJoin(stages) + ".";
+                if (scriptDescriptions.Count > 0) result += " Author-provided script descriptions add: " + NaturalJoin(scriptDescriptions) + ".";
+                if (scriptRoles.Count > 0) result += " Recognized source behavior may " + NaturalJoin(scriptRoles) + ".";
+                if (clusterPurposes.Count > 0) result += " Inspected cluster internals also suggest " + NaturalJoin(clusterPurposes) + ".";
+                if (boundedInterpretation) result += " The broader design purpose remains uncertain.";
+                return result;
+            }
+            if (scriptDescriptions.Count > 0 || scriptRoles.Count > 0)
+            {
+                string result = scriptDescriptions.Count > 0
+                    ? "Possible inference from author-provided script descriptions: the selected workflow may involve " + NaturalJoin(scriptDescriptions) + "."
+                    : "Possible inference from recognized script behavior: the selected workflow may " + NaturalJoin(scriptRoles) + ".";
+                if (scriptDescriptions.Count > 0 && scriptRoles.Count > 0) result += " Recognized source behavior may " + NaturalJoin(scriptRoles) + ".";
+                return result + " The broader design purpose remains uncertain.";
+            }
+            if (clusterPurposes.Count > 0) return "Possible inference from inspected cluster internals: " + String.Join(" ", clusterPurposes.ToArray());
+            return "The broader design purpose cannot be determined from the graph alone.";
+        }
+
+        private static bool HasBlockPlacement(IEnumerable<ContextNode> nodes)
+        {
+            bool block = nodes.Any(n => ContainsToken(n.Name, "block") || ContainsToken(n.Nickname, "block"));
+            if (!block) return false;
+            string[] placementTokens = { "place", "insert", "orient", "transform", "move" };
+            return nodes.Any(n => placementTokens.Any(token => ContainsToken(n.Name, token) || ContainsToken(n.Nickname, token)));
+        }
+
+        private static bool ContainsToken(string value, string token)
+        {
+            return !String.IsNullOrWhiteSpace(value) && value.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static string NaturalJoin(IList<string> values)
+        {
+            if (values == null || values.Count == 0) return "";
+            if (values.Count == 1) return values[0];
+            if (values.Count == 2) return values[0] + " and " + values[1];
+            return String.Join(", ", values.Take(values.Count - 1).ToArray()) + ", and " + values[values.Count - 1];
+        }
+
+        private static string BoundedEvidence(string value, int maximum)
+        {
+            string clean = Regex.Replace((value ?? "").Replace("\r", " ").Replace("\n", " "), @"\s+", " ").Trim();
+            if (clean.Length > maximum) clean = clean.Substring(0, maximum - 1).TrimEnd() + "…";
+            return TrimTerminalPunctuation(clean);
         }
 
         private static string NormalizeClusterPurpose(string purpose)

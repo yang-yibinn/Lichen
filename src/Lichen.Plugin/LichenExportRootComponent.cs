@@ -10,8 +10,10 @@ namespace Lichen.Plugin
 {
     public sealed class LichenExportRootComponent : GH_Component
     {
+        internal const int MaximumNodes = 500;
+
         public LichenExportRootComponent()
-            : base("Lichen", "Lichen", "Marks the complete contributing upstream graph as a persistent Lichen export scope.", "Lichen", "Export")
+            : base("Lichen", "Lichen", "Marks the complete contributing upstream graph as a persistent Lichen export scope.", "Lichen", "Main")
         {
         }
 
@@ -49,7 +51,15 @@ namespace Lichen.Plugin
         protected override void AppendAdditionalComponentMenuItems(ToolStripDropDown menu)
         {
             base.AppendAdditionalComponentMenuItems(menu);
+            Menu_AppendItem(menu, "Select chain", SelectChain, LichenInfo.CreateSelectChainIcon(24), true, false);
             Menu_AppendItem(menu, "Export this root…", OpenExportDialog, LichenInfo.CreateIconCopy(), true, false);
+        }
+
+        private void SelectChain(object sender, EventArgs eventArgs)
+        {
+            Grasshopper.GUI.Canvas.GH_Canvas canvas = Instances.ActiveCanvas;
+            if (canvas == null || canvas.Document == null) return;
+            LichenChainSelection.Select(canvas, LichenChainSelection.RootIdsForContext(canvas.Document, InstanceGuid.ToString("D")));
         }
 
         private void OpenExportDialog(object sender, EventArgs eventArgs)

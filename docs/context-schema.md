@@ -2,9 +2,9 @@
 
 Lichen Exact exports use a deterministic JSON document designed for coding agents, diffing, and future read-only integrations.
 
-## Version 0.5
+## Version 0.6
 
-Version 0.5 adds optional Export Root metadata to `scope`: `rootLabel` and `rootSourceObjectIds`. Version 0.4 added the optional `clusterGraph` on cluster nodes. Readers written for earlier versions must treat 0.5 as a new schema version.
+Version 0.6 adds the top-level `exportSignature` and bounded `runtimeTreeShape` parameter field. Version 0.5 added optional Export Root metadata to `scope`: `rootLabel` and `rootSourceObjectIds`. Version 0.4 added the optional `clusterGraph` on cluster nodes. Readers written for earlier versions must treat 0.6 as a new schema version.
 
 The top-level fields are emitted in this order:
 
@@ -22,6 +22,7 @@ The top-level fields are emitted in this order:
 12. `dependencies`
 13. `analysis`
 14. `extractionNotes`
+15. `exportSignature`
 
 All property names use lower camel case. Identifiers use lowercase GUID strings when they originate in Grasshopper.
 
@@ -68,10 +69,26 @@ Parameter records distinguish:
 
 - Persistent settings in `persistentDataSummary`
 - Already-computed volatile counts in `runtimeDataSummary`
+- Bounded already-computed branch paths and item counts in `runtimeTreeShape`. The default single `{0}` path is omitted. At most eight paths are sampled; consecutive paths with equal counts are summarized as a range, irregular samples remain individually visible, and additional paths are disclosed as an omitted count.
 - Access, optional, expression, flatten, graft, simplify, and reverse behavior
 - Source and recipient counts
 
 Full geometry and volatile data items are never serialized.
+
+Technical Markdown presents only noteworthy runtime topology: multi-branch structures, explicit tree operations, parameter modifiers, and differing same-name input/output shapes. Routine single-path facts remain in Exact Markdown and JSON. Numeric-only Panel contents remain serialized as Panel text but are presented as recipient-labeled workflow values rather than Author Signals; descriptive Panel prose remains an author signal.
+
+## Export signature and Markdown seal
+
+`exportSignature` identifies the artifact as a Lichen export and contains:
+
+- `product`: `Lichen`
+- `exporterVersion`: the Lichen plugin version that produced the export
+- `fingerprintAlgorithm`: `sha256`
+- `contextFingerprint`: the lowercase 64-character SHA-256 digest of the deterministic UTF-8 JSON with `exportSignature` omitted
+
+Markdown presents the same provenance as a short `LCHN-` seal using the first 12 uppercase fingerprint characters. The full fingerprint in Exact JSON is authoritative. This is a reproducible content fingerprint, not a digital author signature: it identifies equal captured content and detects accidental changes, but it does not establish who created an artifact.
+
+To verify a seal, parse the JSON, retain the recorded fingerprint, omit `exportSignature`, serialize the remaining schema using Lichen's deterministic field ordering and formatting, and hash those UTF-8 bytes with SHA-256.
 
 ## Edges and boundaries
 
@@ -101,6 +118,7 @@ Script behavior descriptions and possible roles are deterministic Markdown prese
 
 - Nodes, edges, groups, dependencies, messages, and identifiers are stably ordered.
 - No timestamps or export-session identifiers are included.
+- The provenance seal likewise contains no user, machine, file-path, timestamp, or session data.
 - Re-exporting an unchanged graph with unchanged options produces identical JSON.
 - Exact Markdown embeds the same JSON text returned by **Save JSON**.
 

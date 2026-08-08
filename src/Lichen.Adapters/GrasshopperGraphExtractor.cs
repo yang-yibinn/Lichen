@@ -17,6 +17,7 @@ namespace Lichen.Adapters
     {
         private const int MaximumRuntimeMessagesPerLevel = 20;
         private const int MaximumClusterDepth = 4;
+        private const int MaximumRuntimeTreePaths = 8;
 
         public ContextSnapshot Capture(GH_Document document, bool includeScripts, bool includeRuntime)
         {
@@ -250,6 +251,7 @@ namespace Lichen.Adapters
             result.Graft = mapping.IndexOf("Graft", StringComparison.OrdinalIgnoreCase) >= 0; result.Simplify = mapping.IndexOf("Simplify", StringComparison.OrdinalIgnoreCase) >= 0;
             result.PersistentDataSummary = includePersistent ? CapturePersistentDataSummary(parameter) : "";
             result.RuntimeDataSummary = includeRuntime ? CaptureRuntimeDataSummary(parameter) : "";
+            result.RuntimeTreeShape = includeRuntime ? CaptureRuntimeTreeShape(parameter) : "";
             return result;
         }
 
@@ -361,6 +363,30 @@ namespace Lichen.Adapters
             }
             catch { }
             return "";
+        }
+
+        private static string CaptureRuntimeTreeShape(IGH_Param parameter)
+        {
+            try
+            {
+                IGH_Structure data = parameter.VolatileData;
+                if (data == null || data.DataCount == 0 || data.PathCount == 0) return "";
+                GH_Path firstPath = data.get_Path(0);
+                if (data.PathCount == 1 && String.Equals(firstPath == null ? "" : firstPath.ToString(), "{0}", StringComparison.Ordinal)) return "";
+
+                int captured = Math.Min(data.PathCount, MaximumRuntimeTreePaths);
+                List<string> paths = new List<string>();
+                List<int> itemCounts = new List<int>();
+                for (int i = 0; i < captured; i++)
+                {
+                    GH_Path path = data.get_Path(i);
+                    IList branch = data.get_Branch(i);
+                    paths.Add(path == null ? "{?}" : path.ToString());
+                    itemCounts.Add(branch == null ? 0 : branch.Count);
+                }
+                return RuntimeTreeShapeFormatter.Format(data.PathCount, paths, itemCounts);
+            }
+            catch { return ""; }
         }
 
         private static string CaptureSpecialValue(IGH_DocumentObject obj)

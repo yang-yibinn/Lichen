@@ -9,7 +9,7 @@ Lichen is distributed primarily through Rhino's Package Manager. A versioned ZIP
 3. Restart Rhino if prompted, then open Grasshopper.
 4. Confirm **Lichen -> Copy Context...** appears in the Grasshopper menu.
 
-Package Manager handles the installation path and future updates. Lichen 0.8.0 is packaged for Rhino 8.30 or later on Windows and Grasshopper 1.
+Package Manager handles the installation path and future updates. Lichen 0.8.1 is packaged for Rhino 8.30 or later on Windows and Grasshopper 1.
 
 ## Clean installation
 
@@ -44,12 +44,12 @@ For a manual installation:
 
 ## Verifying the installed version
 
-Before starting Rhino, right-click the installed `Lichen.gha`, choose **Properties → Details**, and confirm that its file version matches the release. All three binaries in Lichen 0.8.0 report assembly version `0.8.0.0`.
+Before starting Rhino, right-click the installed `Lichen.gha`, choose **Properties → Details**, and confirm that its file version matches the release. All three binaries in Lichen 0.8.1 report assembly version `0.8.1.0`.
 
 The adjacent `.sha256` file verifies the release ZIP before extraction. Its recorded hash should match the result of:
 
 ```powershell
-Get-FileHash .\Lichen-0.8.0.zip -Algorithm SHA256
+Get-FileHash .\Lichen-0.8.1.zip -Algorithm SHA256
 ```
 
 ## Rollback

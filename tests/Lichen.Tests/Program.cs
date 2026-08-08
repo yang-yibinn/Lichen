@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using Lichen.Core;
 
 namespace Lichen.Tests
@@ -33,14 +35,23 @@ namespace Lichen.Tests
             Run("boundaries use readable names", ReadableBoundaries);
             Run("identical boundary labels are disambiguated", BoundaryLabelCollision);
             Run("workflow refinement filters passive objects", WorkflowRefinement);
+            Run("whole-workflow purpose combines graph and script evidence", WholeWorkflowPurposeSynthesis);
+            Run("curve-guided sweep workflows receive graph-wide purpose", CurveGuidedSweepPurpose);
+            Run("curve-network fillet workflows receive graph-wide purpose", CurveNetworkFilletPurpose);
             Run("runtime summaries are separated and condensed", RuntimeSummary);
+            Run("runtime tree shapes are presented and serialized", RuntimeTreeShape);
+            Run("Technical topology focuses on tree transitions", TechnicalTopologyTransitions);
             Run("repeated descriptions are normalized", DescriptionNormalization);
             Run("dependencies distinguish native and third-party", DependencyClassification);
             Run("author signals are not duplicated", AuthorSignals);
+            Run("numeric Panels are values rather than author signals", NumericPanelClassification);
+            Run("Technical presentation removes placeholder and duplicate facts", TechnicalPresentationPolish);
             Run("value nodes are labeled by recipients", ValueNodeLabels);
+            Run("colliding Technical component-port labels use stable short IDs", TechnicalPortLabelCollision);
             Run("duplicate boundary labels are condensed", DuplicateBoundaryLabels);
             Run("runtime summaries use grammar and filter passive nodes", RuntimePolish);
             Run("JSON schema uses stable lower-camel fields", JsonSchemaContract);
+            Run("provenance seals are deterministic and content-sensitive", ProvenanceSeal);
             Run("Exact Markdown embeds the complete JSON", ExactJsonAppendix);
             Run("current script components expose source safely", CurrentScriptSource);
             Run("legacy GhPython exposes source safely", LegacyPythonSource);
@@ -54,6 +65,7 @@ namespace Lichen.Tests
             Run("variable-fillet script behavior is described", VariableFilletBehavior);
             Run("unknown scripts remain explicitly unknown", UnknownScriptBehavior);
             Run("nested iterative regions are structured", NestedExecutionRegions);
+            Run("iterative curve workflows receive cautious summaries", IterativeCurvePresentation);
             Run("stateful and solver controllers are classified", ExecutionControllerClassification);
             Run("inspected cluster graphs inform exports", InspectedClusterGraph);
             Run("protected clusters remain explicit and opaque", ProtectedClusterGraph);
@@ -75,6 +87,8 @@ namespace Lichen.Tests
             Run("export root reports deterministic 500-object truncation", ExportRootLimit);
             Run("export root marker is absent from exported JSON", ExportRootMarkerExcluded);
             Run("multiple export roots remain independent", MultipleExportRoots);
+            Run("Export Root Technical output names its result", ExportRootTechnicalPresentation);
+            Run("export root selection includes the highlighted chain and markers", ExportRootSelectionIncludesMarkers);
             Run("export root traversal and export do not mutate snapshots", ExportRootSnapshotIsolation);
             Run("highlight traversal matches export-root scope", ExportRootHighlightMatchesExport);
             Console.WriteLine("Passed: " + passed + "; Failed: " + failed);
@@ -165,6 +179,30 @@ namespace Lichen.Tests
             ContextDocument first = new ContextGraphService().BuildDocument(snapshot, RootOptions("R1"));
             ContextDocument second = new ContextGraphService().BuildDocument(snapshot, RootOptions("R2"));
             Sequence(new[] { "A", "B" }, first.Nodes.Select(n => n.InstanceId)); Sequence(new[] { "C" }, second.Nodes.Select(n => n.InstanceId));
+        }
+
+        private static void ExportRootSelectionIncludesMarkers()
+        {
+            ExportRootClosure closure = new ExportRootClosure
+            {
+                IncludedObjectIds = new List<string> { "B", "A", "b" },
+                RootObjectIds = new List<string> { "R2", "R1", "r1" }
+            };
+            Sequence(new[] { "A", "B", "R1", "R2" }, new ExportRootSelectionResolver().Resolve(closure));
+            Sequence(new[] { "B", "A", "b" }, closure.IncludedObjectIds);
+            Sequence(new[] { "R2", "R1", "r1" }, closure.RootObjectIds);
+        }
+
+        private static void ExportRootTechnicalPresentation()
+        {
+            ContextSnapshot snapshot = RootFixture("R", "Final curves", new[] { "A", "C" }, Edge("A", "C"), Edge("C", "R"));
+            ContextNode terminal = snapshot.Nodes.Single(n => n.InstanceId == "C");
+            terminal.Name = "Merge"; terminal.Nickname = "Final Merge";
+            terminal.Outputs.Add(new ContextParameter { Index = 0, Name = "Result", Nickname = "Result", Direction = "output" });
+            ContextExportOptions options = RootOptions("R"); options.DetailLevel = DetailLevel.Technical; options.IncludeJsonAppendix = false;
+            string markdown = new ContextExporter().Export(snapshot, options).Markdown;
+            True(markdown.Contains("- Export Root result: Final Merge.Result → Lichen.X"), "the terminal root source was not presented as the effective output");
+            True(!markdown.Contains("Originally selected objects"), "irrelevant selection count remained in Export Root scope");
         }
 
         private static void ExportRootSnapshotIsolation()
@@ -403,12 +441,117 @@ namespace Lichen.Tests
             Equal(5, d.Analysis.DetectedOperations.Count); True(!d.Analysis.DetectedOperations.Any(o => o.StartsWith("Number Slider")), "passive slider became a workflow step"); True(d.Analysis.InferredPurpose.Contains("image-derived values"), "recognized purpose missing");
         }
 
+        private static void WholeWorkflowPurposeSynthesis()
+        {
+            ContextSnapshot snapshot = new ContextSnapshot();
+            string[] names = { "Divide Domain²", "Isotrim", "Bounds", "Remap Numbers", "Quad Panels", "Image Sampler", "Cull Pattern", "Create Block", "Orient", "Group" };
+            for (int i = 0; i < names.Length; i++) snapshot.Nodes.Add(new ContextNode { InstanceId = "W" + i, Name = names[i], Nickname = names[i], AssemblyName = "Fixture" });
+            ContextNode script = ScriptNode("Python 3", "\"\"\"Applies dithering to image-derived panel values before block placement and geometry grouping.\"\"\"\nresult = values");
+            script.InstanceId = "W10"; script.Nickname = "Dither Values"; snapshot.Nodes.Add(script);
+
+            string purpose = new ContextGraphService().BuildDocument(snapshot, Options(ScopeMode.EntireDocument)).Analysis.InferredPurpose;
+            True(purpose.StartsWith("Possible inference from graph-wide evidence:"), "graph-wide synthesis did not retain cautious confidence wording");
+            True(purpose.Contains("surface subdivision") && purpose.Contains("numeric normalization or rescaling"), "graph-wide component stages were not combined");
+            True(purpose.Contains("image-driven filtering") && purpose.Contains("block placement") && purpose.Contains("geometry grouping"), "the broader workflow stages were not represented");
+            True(purpose.Contains("Author-provided script descriptions add: Applies dithering"), "author-provided script evidence was not included or clearly labeled");
+            True(purpose.Contains("broader design purpose remains uncertain"), "whole-workflow inference omitted its uncertainty boundary");
+        }
+
+        private static void CurveGuidedSweepPurpose()
+        {
+            ContextSnapshot snapshot = new ContextSnapshot();
+            string[] names = { "Project", "Divide Curve", "Perp Frame", "Align Plane", "Rectangle", "Sweep1", "Group" };
+            for (int i = 0; i < names.Length; i++) snapshot.Nodes.Add(new ContextNode { InstanceId = "S" + i, Name = names[i], Nickname = names[i], AssemblyName = "Fixture" });
+            string purpose = new ContextGraphService().BuildDocument(snapshot, Options(ScopeMode.EntireDocument)).Analysis.InferredPurpose;
+            True(purpose.Contains("curve projection onto Breps"), "curve projection stage was omitted from the graph-wide purpose");
+            True(purpose.Contains("oriented section construction along divided curves"), "section-frame stage was omitted from the graph-wide purpose");
+            True(purpose.Contains("sweep geometry construction") && purpose.Contains("geometry grouping"), "sweep or grouping stage was omitted from the graph-wide purpose");
+        }
+
+        private static void CurveNetworkFilletPurpose()
+        {
+            ContextSnapshot snapshot = new ContextSnapshot();
+            string[] names = { "Offset Curve", "Discontinuity", "Shatter", "Fit Curve Smooth", "Join Curves", "Curve | Curve", "Vector 2Pt", "Angle", "Degrees", "Remap Numbers", "Graph Mapper" };
+            for (int i = 0; i < names.Length; i++) snapshot.Nodes.Add(new ContextNode { InstanceId = "F" + i, Name = names[i], Nickname = names[i], AssemblyName = "Fixture" });
+            ContextNode script = ScriptNode("C#", "Curve.GetFilletPoints(a,b,radii[0],t1,t2,out x,out y,out p); curve.DuplicateSegments(); Curve.JoinCurves(parts);");
+            script.InstanceId = "F11"; snapshot.Nodes.Add(script);
+            string purpose = new ContextGraphService().BuildDocument(snapshot, Options(ScopeMode.EntireDocument)).Analysis.InferredPurpose;
+            True(purpose.StartsWith("Possible inference from graph-wide evidence:"), "curve-network purpose did not use cautious graph-wide wording");
+            True(purpose.Contains("curve-network offsetting, segmentation, and smoothing"), "curve-network preparation was omitted");
+            True(purpose.Contains("intersection-angle measurement"), "intersection-angle analysis was omitted");
+            True(purpose.Contains("remapping measured angles into per-location fillet radii"), "angle-driven fillet-radius preparation was omitted");
+            True(purpose.Contains("rebuild curves with per-location fillet radii"), "recognized variable-fillet behavior was omitted");
+        }
+
         private static void RuntimeSummary()
         {
             ContextSnapshot s = Fixture("B"); ContextNode node = s.Nodes.Single(n => n.InstanceId == "B"); node.Outputs.Add(new ContextParameter { Index = 0, Name = "Result", Nickname = "Result", Direction = "output", RuntimeDataSummary = "items=15252, branches=5" });
             ContextExportOptions options = Options(ScopeMode.SelectedOnly); options.DetailLevel = DetailLevel.Technical;
             string markdown = new ContextExporter().Export(s, options).Markdown;
             True(markdown.Contains("15,252 items across 5 branches"), "runtime counts were not formatted"); True(!markdown.Contains("internalized/available"), "obsolete runtime label remains");
+        }
+
+        private static void RuntimeTreeShape()
+        {
+            ContextSnapshot snapshot = Fixture("B");
+            ContextNode node = snapshot.Nodes.Single(n => n.InstanceId == "B");
+            string single = RuntimeTreeShapeFormatter.Format(1, new[] { "{0;0}" }, new[] { 1 });
+            string regular = RuntimeTreeShapeFormatter.Format(16,
+                new[] { "{0}", "{1}", "{2}", "{3}", "{4}", "{5}", "{6}", "{7}" },
+                new[] { 4, 4, 4, 4, 4, 4, 4, 4 });
+            Equal("1 path: {0;0} (1 item)", single);
+            Equal("16 paths; first 8: {0} through {7} (4 items each); 8 additional paths not listed", regular);
+            node.Inputs.Add(new ContextParameter { Index = 0, Name = "Tree", Nickname = "Tree", Direction = "input", RuntimeTreeShape = single });
+            node.Inputs.Add(new ContextParameter { Index = 1, Name = "Guide", Nickname = "Guide", Direction = "input", RuntimeTreeShape = regular });
+            node.Outputs.Add(new ContextParameter { Index = 0, Name = "Tree", Nickname = "Tree", Direction = "output", RuntimeDataSummary = "items=64, branches=16", RuntimeTreeShape = regular });
+            node.Outputs.Add(new ContextParameter { Index = 1, Name = "Routine", Nickname = "Routine", Direction = "output", RuntimeTreeShape = single });
+            node.Inputs[0].Flatten = true;
+            ContextNode treeBranch = new ContextNode { InstanceId = "T", Name = "Tree Branch", Nickname = "Tree Branch", AssemblyName = "Grasshopper" };
+            treeBranch.Outputs.Add(new ContextParameter { Index = 0, Name = "Branch", Direction = "output", RuntimeTreeShape = single });
+            snapshot.Nodes.Add(treeBranch); snapshot.SelectedObjectIds.Add(treeBranch.InstanceId);
+            ContextExportOptions options = Options(ScopeMode.SelectedOnly); options.DetailLevel = DetailLevel.Technical;
+            ContextExportPackage package = new ContextExporter().Export(snapshot, options);
+            True(package.Markdown.Contains("B.Tree (input): flatten, runtime tree: 1 path: {0;0} (1 item)"), "same-name input tree or merged modifier was not presented correctly");
+            Equal(1, Count(package.Markdown, "B.Tree (input):"));
+            True(package.Markdown.Contains("B \u2014 Guide, Tree (output): runtime tree: 16 paths; first 8: {0} through {7} (4 items each); 8 additional paths not listed"), "identical tree shapes were not grouped or the output collision was not disambiguated");
+            Equal(1, Count(package.Markdown, "runtime tree: 16 paths; first 8:"));
+            True(!package.Markdown.Contains("B.Routine: runtime tree"), "routine single-path topology was not filtered from Technical output");
+            True(package.Markdown.Contains("Tree Branch.Branch: runtime tree: 1 path: {0;0} (1 item)"), "explicit tree-operation topology was filtered from Technical output");
+            True(package.Json.Contains("\"runtimeTreeShape\""), "runtime tree topology missing from Exact JSON");
+            ContextExportOptions exact = Options(ScopeMode.SelectedOnly); exact.DetailLevel = DetailLevel.Exact;
+            ContextExportPackage exactPackage = new ContextExporter().Export(snapshot, exact);
+            string exactBehavior = SectionText(exactPackage.Markdown, "Data-Tree and Parameter Behavior", "Runtime Data Summary");
+            True(exactBehavior.Contains("Routine") && exactBehavior.Contains("runtime tree: 1 path: {0;0} (1 item)"), "Exact Markdown omitted routine single-path topology");
+            ContextExportOptions brief = Options(ScopeMode.SelectedOnly); brief.DetailLevel = DetailLevel.Brief;
+            True(!new ContextExporter().Export(snapshot, brief).Markdown.Contains("runtime tree:"), "Brief output included Technical tree topology");
+        }
+
+        private static void TechnicalTopologyTransitions()
+        {
+            string regular = RuntimeTreeShapeFormatter.Format(16,
+                new[] { "{0}", "{1}", "{2}", "{3}", "{4}", "{5}", "{6}", "{7}" },
+                new[] { 1, 1, 1, 1, 1, 1, 1, 1 });
+            string changed = RuntimeTreeShapeFormatter.Format(2, new[] { "{0;0}", "{0;1}" }, new[] { 8, 8 });
+            ContextSnapshot snapshot = new ContextSnapshot();
+            ContextNode source = new ContextNode { InstanceId = "source", Name = "Source", Nickname = "Source", AssemblyName = "Fixture" };
+            source.Outputs.Add(new ContextParameter { Index = 0, Name = "Data", Direction = "output", RuntimeTreeShape = regular });
+            ContextNode pass = new ContextNode { InstanceId = "pass", Name = "Pass Through", Nickname = "Pass Through", AssemblyName = "Fixture" };
+            pass.Inputs.Add(new ContextParameter { Index = 0, Name = "Input", Direction = "input", RuntimeTreeShape = regular });
+            pass.Outputs.Add(new ContextParameter { Index = 0, Name = "Output", Direction = "output", RuntimeTreeShape = regular });
+            ContextNode transition = new ContextNode { InstanceId = "transition", Name = "Restructure", Nickname = "Restructure", AssemblyName = "Fixture" };
+            transition.Inputs.Add(new ContextParameter { Index = 0, Name = "Input", Direction = "input", RuntimeTreeShape = regular });
+            transition.Outputs.Add(new ContextParameter { Index = 0, Name = "Output", Direction = "output", RuntimeTreeShape = changed });
+            snapshot.Nodes.AddRange(new[] { source, pass, transition });
+            snapshot.Edges.Add(new ContextEdge { SourceNodeId = "source", SourceParameterIndex = 0, SourceParameterName = "Data", TargetNodeId = "pass", TargetParameterIndex = 0, TargetParameterName = "Input" });
+            snapshot.Edges.Add(new ContextEdge { SourceNodeId = "pass", SourceParameterIndex = 0, SourceParameterName = "Output", TargetNodeId = "transition", TargetParameterIndex = 0, TargetParameterName = "Input" });
+            ContextExportOptions technical = Options(ScopeMode.EntireDocument); technical.DetailLevel = DetailLevel.Technical;
+            string technicalBehavior = SectionText(new ContextExporter().Export(snapshot, technical).Markdown, "Data-Tree and Parameter Behavior", "Runtime Data Summary");
+            True(technicalBehavior.Contains("Source.Data: runtime tree"), "originating multi-branch topology was omitted");
+            True(!technicalBehavior.Contains("Pass Through.Input: runtime tree") && !technicalBehavior.Contains("Pass Through.Output: runtime tree"), "unchanged pass-through topology remained in Technical output");
+            True(technicalBehavior.Contains("Restructure.Output: runtime tree: 2 paths"), "tree transition was omitted from Technical output");
+            ContextExportOptions exact = Options(ScopeMode.EntireDocument); exact.DetailLevel = DetailLevel.Exact;
+            string exactBehavior = SectionText(new ContextExporter().Export(snapshot, exact).Markdown, "Data-Tree and Parameter Behavior", "Runtime Data Summary");
+            True(exactBehavior.Contains("Pass Through — Input, Output: runtime tree"), "Exact output lost grouped pass-through topology");
         }
 
         private static void DescriptionNormalization()
@@ -432,11 +575,89 @@ namespace Lichen.Tests
             string markdown = new ContextExporter().Export(s, options).Markdown; Equal(1, Count(markdown, "text=Facade zones"));
         }
 
+        private static void NumericPanelClassification()
+        {
+            ContextSnapshot snapshot = new ContextSnapshot();
+            ContextNode numeric = new ContextNode { InstanceId = "numeric", Name = "Panel", Nickname = "Panel", PersistentValueSummary = "text=0  -1", AssemblyName = "Grasshopper" };
+            ContextNode range = new ContextNode { InstanceId = "range", Name = "Panel", Nickname = "Panel", PersistentValueSummary = "text=0 to 180", AssemblyName = "Grasshopper" };
+            ContextNode rangeProse = new ContextNode { InstanceId = "range-prose", Name = "Panel", Nickname = "Panel", PersistentValueSummary = "text=Rotate from 0 to 180 degrees", AssemblyName = "Grasshopper" };
+            ContextNode prose = new ContextNode { InstanceId = "prose", Name = "Panel", Nickname = "Panel", PersistentValueSummary = "text=Facade zones", AssemblyName = "Grasshopper" };
+            ContextNode target = new ContextNode { InstanceId = "target", Name = "Extend Curve", Nickname = "Extend Curve", AssemblyName = "CurveComponents" };
+            target.Inputs.Add(new ContextParameter { Index = 0, Name = "Indices", Direction = "input" });
+            target.Inputs.Add(new ContextParameter { Index = 1, Name = "Domain", Direction = "input" });
+            target.Inputs.Add(new ContextParameter { Index = 2, Name = "Description", Direction = "input" });
+            snapshot.Nodes.AddRange(new[] { numeric, range, rangeProse, prose, target });
+            snapshot.Edges.Add(new ContextEdge { SourceNodeId = numeric.InstanceId, SourceParameterName = "Panel", TargetNodeId = target.InstanceId, TargetParameterName = "Indices" });
+            snapshot.Edges.Add(new ContextEdge { SourceNodeId = range.InstanceId, SourceParameterName = "Panel", TargetNodeId = target.InstanceId, TargetParameterName = "Domain" });
+            snapshot.Edges.Add(new ContextEdge { SourceNodeId = prose.InstanceId, SourceParameterName = "Panel", TargetNodeId = target.InstanceId, TargetParameterName = "Description" });
+            ContextExportOptions options = Options(ScopeMode.EntireDocument); options.DetailLevel = DetailLevel.Technical;
+            string markdown = new ContextExporter().Export(snapshot, options).Markdown;
+            string authorSignals = SectionText(markdown, "Author Signals", "Inferred Purpose");
+            string parameterBehavior = SectionText(markdown, "Data-Tree and Parameter Behavior", "Runtime Data Summary");
+            True(authorSignals.Contains("text=Facade zones"), "descriptive Panel was omitted from Author Signals");
+            True(authorSignals.Contains("text=Rotate from 0 to 180 degrees"), "prose containing a numeric range was misclassified as data");
+            True(!authorSignals.Contains("text=0  -1") && !authorSignals.Contains("value=0  -1"), "numeric Panel was misclassified as an Author Signal");
+            True(!authorSignals.Contains("Panel → Extend Curve.Domain: text=0 to 180"), "range Panel was misclassified as an Author Signal");
+            True(parameterBehavior.Contains("Panel → Extend Curve.Indices: value=0  -1"), "numeric Panel was not presented as a recipient-labeled value");
+            True(parameterBehavior.Contains("Panel → Extend Curve.Domain: value=0 to 180"), "range Panel was not presented as a recipient-labeled value");
+            True(!parameterBehavior.Contains("Facade zones"), "descriptive Panel was duplicated as a parameter value");
+        }
+
+        private static void TechnicalPresentationPolish()
+        {
+            ContextSnapshot snapshot = new ContextSnapshot();
+            ContextNode first = new ContextNode { InstanceId = "aaaaaaaa-1111-1111-1111-111111111111", Name = "Curve", Nickname = "Curve", AssemblyName = "Grasshopper", PersistentValueSummary = "persistent items=44, branches=1" };
+            first.Inputs.Add(new ContextParameter { Index = 0, Name = "Curve", Nickname = "Curve", Direction = "input", Flatten = true });
+            first.Outputs.Add(new ContextParameter { Index = 0, Name = "Curve", Nickname = "Curve", Direction = "output", Flatten = true });
+            first.RuntimeMessages.Add(new ContextRuntimeMessage { Level = "error", Message = "Data conversion failed from Number to Curve" });
+            ContextNode second = new ContextNode { InstanceId = "bbbbbbbb-2222-2222-2222-222222222222", Name = "Curve", Nickname = "Curve", AssemblyName = "Grasshopper" };
+            second.Inputs.Add(new ContextParameter { Index = 0, Name = "Curve", Nickname = "Curve", Direction = "input" });
+            second.Outputs.Add(new ContextParameter { Index = 0, Name = "Curve", Nickname = "Curve", Direction = "output" });
+            ContextNode panel = new ContextNode { InstanceId = "panel", Name = "Panel", Nickname = "Panel", AssemblyName = "Grasshopper", PersistentValueSummary = "text=Double click to edit panel content…" };
+            snapshot.Nodes.AddRange(new[] { first, second, panel });
+            ContextExportOptions options = Options(ScopeMode.EntireDocument); options.DetailLevel = DetailLevel.Technical; options.IncludeJsonAppendix = false;
+            ContextExportPackage package = new ContextExporter().Export(snapshot, options);
+            Equal(1, Count(package.Markdown, "Curve [aaaaaaaa].Curve: flatten"));
+            True(!package.Markdown.Contains("Double click to edit panel content"), "empty Panel placeholder was presented as an author signal");
+            True(!package.Json.Contains("Double click to edit panel content"), "empty Panel placeholder leaked into the exact graph");
+            True(package.Markdown.Contains("error — Curve [aaaaaaaa]: Data conversion failed"), "colliding runtime-message owner was ambiguous");
+            True(package.Markdown.Contains("| Curve | Curve [aaaaaaaa] |") && package.Markdown.Contains("| Curve | Curve [bbbbbbbb] |"), "colliding inventory rows were ambiguous");
+        }
+
         private static void ValueNodeLabels()
         {
             ContextSnapshot s = Fixture(); s.Nodes[0].Name = "Number Slider"; s.Nodes[0].Nickname = "Number Slider"; s.Nodes[0].PersistentValueSummary = "value=5";
             ContextExportOptions options = Options(ScopeMode.EntireDocument); options.DetailLevel = DetailLevel.Technical;
             string markdown = new ContextExporter().Export(s, options).Markdown; True(markdown.Contains("Number Slider → B.in: value=5"), "value node recipient label missing");
+        }
+
+        private static void TechnicalPortLabelCollision()
+        {
+            ContextSnapshot snapshot = new ContextSnapshot();
+            ContextNode dense = new ContextNode { InstanceId = "aaaaaaaa-1111-1111-1111-111111111111", Name = "Divide Surface", Nickname = "Divide Surface", AssemblyName = "SurfaceComponents" };
+            dense.Inputs.Add(new ContextParameter { Index = 0, Name = "U Count", Direction = "input", PersistentDataSummary = "500" });
+            dense.Inputs.Add(new ContextParameter { Index = 1, Name = "V Count", Direction = "input", PersistentDataSummary = "200" });
+            dense.Outputs.Add(new ContextParameter { Index = 0, Name = "Points", Direction = "output", RuntimeDataSummary = "items=500, branches=1" });
+            ContextNode sparse = new ContextNode { InstanceId = "bbbbbbbb-2222-2222-2222-222222222222", Name = "Divide Surface", Nickname = "Divide Surface", AssemblyName = "SurfaceComponents" };
+            sparse.Inputs.Add(new ContextParameter { Index = 0, Name = "U Count", Direction = "input", PersistentDataSummary = "2" });
+            sparse.Inputs.Add(new ContextParameter { Index = 1, Name = "V Count", Direction = "input", PersistentDataSummary = "2" });
+            sparse.Outputs.Add(new ContextParameter { Index = 0, Name = "Points", Direction = "output", RuntimeDataSummary = "items=200, branches=1" });
+            ContextNode unique = new ContextNode { InstanceId = "cccccccc-3333-3333-3333-333333333333", Name = "Series", Nickname = "Series", AssemblyName = "MathComponents" };
+            unique.Inputs.Add(new ContextParameter { Index = 0, Name = "Count", Direction = "input", PersistentDataSummary = "10" });
+            ContextNode denseCount = new ContextNode { InstanceId = "slider-a", Name = "Number Slider", Nickname = "Number Slider", PersistentValueSummary = "value=500", AssemblyName = "Grasshopper" };
+            ContextNode sparseCount = new ContextNode { InstanceId = "slider-b", Name = "Number Slider", Nickname = "Number Slider", PersistentValueSummary = "value=2", AssemblyName = "Grasshopper" };
+            snapshot.Nodes.AddRange(new[] { dense, sparse, unique, denseCount, sparseCount });
+            snapshot.Edges.Add(new ContextEdge { SourceNodeId = denseCount.InstanceId, SourceParameterName = "Number", TargetNodeId = dense.InstanceId, TargetParameterName = "U Count" });
+            snapshot.Edges.Add(new ContextEdge { SourceNodeId = sparseCount.InstanceId, SourceParameterName = "Number", TargetNodeId = sparse.InstanceId, TargetParameterName = "U Count" });
+
+            ContextExportOptions options = Options(ScopeMode.EntireDocument); options.DetailLevel = DetailLevel.Technical; options.IncludeJsonAppendix = false;
+            string markdown = new ContextExporter().Export(snapshot, options).Markdown;
+            True(markdown.Contains("Divide Surface [aaaaaaaa].U Count: persistent data: 500"), "the first colliding U Count setting was ambiguous");
+            True(markdown.Contains("Divide Surface [bbbbbbbb].U Count: persistent data: 2"), "the second colliding U Count setting was ambiguous");
+            True(markdown.Contains("Divide Surface [aaaaaaaa].V Count: persistent data: 200") && markdown.Contains("Divide Surface [bbbbbbbb].V Count: persistent data: 2"), "colliding V Count settings were ambiguous");
+            True(markdown.Contains("Number Slider → Divide Surface [aaaaaaaa].U Count: value=500") && markdown.Contains("Number Slider → Divide Surface [bbbbbbbb].U Count: value=2"), "recipient-labeled slider settings did not identify their component instances");
+            True(markdown.Contains("Divide Surface [aaaaaaaa] — Points: 500 items") && markdown.Contains("Divide Surface [bbbbbbbb] — Points: 200 items"), "colliding runtime labels did not identify their component instances");
+            True(markdown.Contains("Series.Count: persistent data: 10") && !markdown.Contains("Series [cccccccc].Count"), "a non-colliding label received an unnecessary ID");
         }
 
         private static void DuplicateBoundaryLabels()
@@ -464,13 +685,35 @@ namespace Lichen.Tests
         private static void JsonSchemaContract()
         {
             string json = new ContextExporter().Export(Fixture("B"), Options(ScopeMode.SelectedOnly)).Json;
-            True(json.Contains("\"schemaVersion\": \"0.5\""), "schema version missing");
+            True(json.Contains("\"schemaVersion\": \"0.6\""), "schema version missing");
             True(json.Contains("\"selectedObjectIds\""), "scope field is not lower camel case");
             True(json.Contains("\"sourceNodeId\""), "edge field is not lower camel case");
             True(json.Contains("\"internalNodeName\""), "boundary display name missing");
             True(!json.Contains("\"SchemaVersion\""), "Pascal-case field leaked into JSON");
             True(json.Contains("\"executionSemantics\""), "execution semantics contract missing");
             True(json.Contains("\"runtimeTypeName\""), "runtime type contract missing");
+            True(json.Contains("\"exportSignature\""), "export signature contract missing");
+        }
+
+        private static void ProvenanceSeal()
+        {
+            ContextExportOptions options = Options(ScopeMode.SelectedOnly); options.ExporterVersion = "test-version";
+            ContextExportPackage first = new ContextExporter().Export(Fixture("B"), options);
+            ContextExportPackage second = new ContextExporter().Export(Fixture("B"), options);
+            Equal(first.Document.ExportSignature.ContextFingerprint, second.Document.ExportSignature.ContextFingerprint);
+            Equal(64, first.Document.ExportSignature.ContextFingerprint.Length);
+            Equal("test-version", first.Document.ExportSignature.ExporterVersion);
+            True(first.Markdown.Contains("## Lichen Provenance Seal") && first.Markdown.Contains("LCHN-" + first.Document.ExportSignature.ContextFingerprint.Substring(0, 12).ToUpperInvariant()), "Markdown provenance seal missing");
+            True(!first.Markdown.Contains("Timestamp") && !first.Json.Contains("timestamp"), "non-deterministic timestamp leaked into the provenance seal");
+
+            ContextDocument verification = new ContextJsonSerializer().Deserialize(first.Json);
+            string recorded = verification.ExportSignature.ContextFingerprint;
+            verification.ExportSignature = null;
+            Equal(recorded, Sha256(new ContextJsonSerializer().Serialize(verification)));
+
+            ContextSnapshot changedSnapshot = Fixture("B"); changedSnapshot.Name = "changed.gh";
+            ContextExportPackage changed = new ContextExporter().Export(changedSnapshot, options);
+            True(!String.Equals(recorded, changed.Document.ExportSignature.ContextFingerprint, StringComparison.Ordinal), "content change did not change the fingerprint");
         }
 
         private static void ExactJsonAppendix()
@@ -610,6 +853,28 @@ namespace Lichen.Tests
             ContextExecutionRegion inner = d.Analysis.ExecutionSemantics.Regions.Single(r => r.StartNodeId == "IS");
             Equal(1, inner.NestingLevel); Equal("30", inner.IterationLimit);
             True(!d.Analysis.ExecutionSemantics.OrdinaryWireGraphHasCycle, "control region created a false wire cycle");
+            ContextExportOptions technical = Options(ScopeMode.EntireDocument); technical.DetailLevel = DetailLevel.Technical;
+            string markdown = new ContextExporter().Export(s, technical).Markdown;
+            True(markdown.Contains("- Contains: Move"), "Technical Workflow Structure did not correlate a region with its member components");
+        }
+
+        private static void IterativeCurvePresentation()
+        {
+            ContextSnapshot snapshot = new ContextSnapshot();
+            ContextNode start = ExecutionNode("LS", "Loop Start", "Anemone.LoopStart"); start.Description = "Start the loop with this one. Double click to rerun.";
+            ContextNode end = ExecutionNode("LE", "Loop End", "Anemone.LoopEnd"); end.Description = "End the loop with this one. Double click to pause the loop.";
+            ContextNode button = ExecutionNode("B", "Button", "Grasshopper.Kernel.Special.GH_ButtonObject"); button.Description = "Button object with two values.";
+            ContextNode gate = ExecutionNode("G", "Stream Freeze / Gate", "Heteroptera.Gate"); gate.Description = "The Gate switch controls whether streaming data will be allowed to pass. Right-click and choose an option.";
+            string[] names = { "Discontinuity", "Shatter", "Tween Two Curves", "Extend Curve", "Trim with Region", "Merge", "Clean Tree" };
+            snapshot.Nodes.AddRange(new[] { start, end, button, gate });
+            for (int i = 0; i < names.Length; i++) snapshot.Nodes.Add(ExecutionNode("W" + i, names[i], "Fixture." + names[i].Replace(" ", "")));
+            ContextExportOptions options = Options(ScopeMode.EntireDocument); options.DetailLevel = DetailLevel.Technical; options.IncludeJsonAppendix = false;
+            ContextExportPackage package = new ContextExporter().Export(snapshot, options);
+            True(package.Document.Analysis.InferredPurpose.Contains("iterative curve processing"), "loop-aware curve purpose was not synthesized");
+            True(package.Document.Analysis.InferredPurpose.Contains("curve tween generation") && package.Document.Analysis.InferredPurpose.Contains("region-based curve trimming"), "curve-processing stages were omitted from purpose synthesis");
+            True(package.Document.Analysis.InferredPurpose.Contains("broader design purpose remains uncertain"), "iterative purpose overstated certainty");
+            True(package.Markdown.Contains("Button: provides a manual Boolean trigger") && !package.Markdown.Contains("Button object with two values"), "Button summary used noisy component metadata");
+            True(package.Markdown.Contains("Stream Freeze / Gate: gates downstream data flow") && !package.Markdown.Contains("Right-click and choose"), "gate summary used noisy component metadata");
         }
 
         private static void ExecutionControllerClassification()
@@ -718,6 +983,8 @@ namespace Lichen.Tests
             options.ClusterPurposeNotes[first.InstanceId] = "Re-aligns geometry between guide curves."; options.ClusterPurposeNotes[second.InstanceId] = "Re-aligns geometry between guide curves.";
             string markdown = new ContextExporter().Export(snapshot, options).Markdown;
             True(markdown.Contains("### Flow [aaaaaaaa]") && markdown.Contains("### Flow [bbbbbbbb]"), "duplicate cluster headings were not disambiguated");
+            True(markdown.Contains("- Flow [aaaaaaaa] [reusable subgraph]") && markdown.Contains("- Flow [bbbbbbbb] [reusable subgraph]"), "Workflow Structure did not correlate duplicate clusters to their detailed headings");
+            True(markdown.Contains("Flow [aaaaaaaa]: black-box observations") && markdown.Contains("Flow [bbbbbbbb]: black-box observations"), "Workflow Summary did not correlate duplicate clusters to their detailed headings");
             True(markdown.Contains("User-provided purpose for cluster Flow (2 instances): Re-aligns geometry between guide curves."), "shared duplicate-cluster purpose was not consolidated");
             Equal(1, Count(markdown, "User-provided purpose for cluster Flow (2 instances):"));
         }
@@ -836,6 +1103,11 @@ namespace Lichen.Tests
 
         private static ContextDocument Build(ScopeMode mode, params string[] selected) { return new ContextGraphService().BuildDocument(Fixture(selected), Options(mode)); }
         private static ContextExportOptions Options(ScopeMode mode) { return new ContextExportOptions { ScopeMode = mode, DetailLevel = DetailLevel.Exact, IncludeScriptSource = true, IncludeRuntimeSummary = true, MaximumNodes = 500 }; }
+        private static string Sha256(string value)
+        {
+            using (SHA256 algorithm = SHA256.Create())
+                return String.Concat(algorithm.ComputeHash(Encoding.UTF8.GetBytes(value ?? "")).Select(b => b.ToString("x2")));
+        }
         private static ContextSnapshot Fixture(params string[] selected)
         {
             ContextSnapshot s = new ContextSnapshot { Name = "fixture.gh", RhinoVersion = "8", GrasshopperVersion = "8" };
@@ -874,6 +1146,13 @@ namespace Lichen.Tests
         }
         private static ContextNode Node(string id) { return new ContextNode { InstanceId = id, TypeId = "type-" + id, Name = "Unknown " + id, Nickname = id, Description = "Fixture node " + id, AssemblyName = "Fixture", AssemblyVersion = "1.0" }; }
         private static ContextEdge Edge(string source, string target) { return new ContextEdge { SourceNodeId = source, SourceParameterIndex = 0, SourceParameterName = "out", TargetNodeId = target, TargetParameterIndex = 0, TargetParameterName = "in" }; }
+        private static string SectionText(string markdown, string heading, string nextHeading)
+        {
+            string startToken = "## " + heading; string endToken = "## " + nextHeading;
+            int start = markdown.IndexOf(startToken, StringComparison.Ordinal); if (start < 0) return "";
+            int end = markdown.IndexOf(endToken, start + startToken.Length, StringComparison.Ordinal); if (end < 0) end = markdown.Length;
+            return markdown.Substring(start, end - start);
+        }
 
         private static void Run(string name, Action test)
         {
