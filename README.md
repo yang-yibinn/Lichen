@@ -6,6 +6,14 @@ Lichen is designed to fit into the Grasshopper workflow you already know. You co
 
 Developed by Yibin Yang at Adrian Smith + Gordon Gill Architecture (AS+GG).
 
+## Lichen in Grasshopper
+
+![Animated Lichen Export Root workflow in Grasshopper](docs/images/lichen-export-root.gif)
+
+<p align="center">
+  <img src="docs/images/lichen-export-dialog.png" alt="Lichen Grasshopper context export dialog" width="600">
+</p>
+
 ## Requirements
 
 - Rhino 8.30 or later for Windows
