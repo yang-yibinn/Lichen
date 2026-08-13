@@ -17,6 +17,10 @@ namespace Lichen.Plugin
         internal const int OutlineOpacity = 255;
         internal const int WireOpacity = 255;
         internal const float ComponentBandSize = 10F;
+        private const float ComponentWidth = 100F;
+        private const float ComponentHeight = 52F;
+        private const float XGripOffset = 15F;
+        private const float TGripOffset = 37F;
         private static readonly Color LichenGreen = Color.FromArgb(64, 181, 50);
         private static readonly Color LichenEdge = Color.FromArgb(35, 126, 31);
         private static readonly Color LichenBody = Color.FromArgb(48, 108, 42);
@@ -37,13 +41,15 @@ namespace Lichen.Plugin
         protected override void Layout()
         {
             base.Layout();
-            m_innerBounds = new RectangleF(m_innerBounds.Left, m_innerBounds.Top, 100F, 40F);
+            m_innerBounds = new RectangleF(m_innerBounds.Left, m_innerBounds.Top, ComponentWidth, ComponentHeight);
             LayoutInputParams(Owner, m_innerBounds);
-            if (Owner.Params.Input.Count > 0 && Owner.Params.Input[0].Attributes != null)
+            for (int i = 0; i < Owner.Params.Input.Count; i++)
             {
-                IGH_Attributes inputAttributes = Owner.Params.Input[0].Attributes;
-                inputAttributes.Pivot = new PointF(m_innerBounds.Left, m_innerBounds.Top + 20F);
-                inputAttributes.Bounds = new RectangleF(m_innerBounds.Left, m_innerBounds.Top, 12F, m_innerBounds.Height);
+                IGH_Attributes inputAttributes = Owner.Params.Input[i].Attributes;
+                if (inputAttributes == null) continue;
+                float y = m_innerBounds.Top + (i == 0 ? XGripOffset : TGripOffset);
+                inputAttributes.Pivot = new PointF(m_innerBounds.Left, y);
+                inputAttributes.Bounds = new RectangleF(m_innerBounds.Left, y - 8F, 12F, 16F);
             }
             RectangleF bounds = m_innerBounds; bounds.Inflate(6F, 2F); Bounds = bounds;
         }
@@ -53,6 +59,7 @@ namespace Lichen.Plugin
             if (channel == GH_CanvasChannel.Wires)
             {
                 base.Render(canvas, graphics, channel);
+                DrawThallusWires(graphics);
                 currentPaintScope = ResolveSelectedScope(canvas);
                 currentPaintDocument = canvas == null ? null : canvas.Document;
                 if (currentPaintScope != null) DrawHighlightedWires(graphics, currentPaintScope);
@@ -67,6 +74,36 @@ namespace Lichen.Plugin
             if (channel != GH_CanvasChannel.Overlay || !Selected || canvas == null || canvas.Document == null) return;
             GrasshopperExportRootScope scope = Object.ReferenceEquals(currentPaintDocument, canvas.Document) ? currentPaintScope : ResolveSelectedScope(canvas);
             if (scope != null) DrawComponentBands(graphics, scope);
+        }
+
+        private void DrawThallusWires(Graphics graphics)
+        {
+            GH_Document document = Owner.OnPingDocument();
+            if (document == null || Owner.Params.Input.Count < 2 || Owner.Params.Input[0].Sources.Count > 0 || Owner.Params.Input[1].Sources.Count == 0) return;
+            GrasshopperThallusIdentityRoute route;
+            try { route = new GrasshopperThallusIdentityResolver().Resolve(document, Owner, LichenExportRootComponent.MaximumNodes); }
+            catch { return; }
+            foreach (GrasshopperExportRootEdge edge in route.Edges)
+            {
+                IGH_Param source = edge.Source; IGH_Param target = edge.Target;
+                if (source == null || target == null || source.Attributes == null || target.Attributes == null || target.WireDisplay == GH_ParamWireDisplay.hidden) continue;
+                IGH_Attributes topAttributes = source.Attributes.GetTopLevel;
+                IGH_DocumentObject top = topAttributes == null ? null : topAttributes.DocObject;
+                if (top != null && top.ComponentGuid == Lichen.Core.LichenComponentIds.ThallusEndpoint)
+                {
+                    LichenThallusEndpointAttributes endpointAttributes = topAttributes as LichenThallusEndpointAttributes;
+                    if (endpointAttributes != null) endpointAttributes.UpdateBoundaryLocation();
+                }
+                int alpha = target.WireDisplay == GH_ParamWireDisplay.faint ? 100 : 255;
+                float width = target.WireDisplay == GH_ParamWireDisplay.faint ? 1.5F : 2.5F;
+                using (Pen wire = new Pen(Color.FromArgb(alpha, LichenBody), width))
+                using (GraphicsPath path = GH_Painter.ConnectionPath(source.Attributes.OutputGrip, target.Attributes.InputGrip, GH_WireDirection.right, GH_WireDirection.left))
+                {
+                    wire.StartCap = LineCap.Round;
+                    wire.EndCap = LineCap.Round;
+                    graphics.DrawPath(wire, path);
+                }
+            }
         }
 
         private GrasshopperExportRootScope ResolveSelectedScope(GH_Canvas canvas)
@@ -132,19 +169,25 @@ namespace Lichen.Plugin
         private void RenderLichenBody(Graphics graphics)
         {
             RectangleF body = m_innerBounds;
-            PointF grip = new PointF(body.Left, body.Top + 20F);
+            PointF xGrip = new PointF(body.Left, body.Top + XGripOffset);
+            PointF tGrip = new PointF(body.Left, body.Top + TGripOffset);
             GH_PaletteStyle style = new GH_PaletteStyle(Selected ? LichenSelectedBody : LichenBody, LichenBodyEdge, Color.White);
             using (GH_Capsule capsule = GH_Capsule.CreateCapsule(body, GH_Palette.Normal, 3, 6))
             using (Brush textBrush = new SolidBrush(Color.White))
             {
                 capsule.SetJaggedEdges(false, true);
-                capsule.AddInputGrip(grip);
+                capsule.AddInputGrip(xGrip);
+                capsule.AddInputGrip(tGrip);
                 capsule.Render(graphics, style);
-                RectangleF iconBox = new RectangleF(body.Right - 36F, body.Top + 8F, 24F, 24F);
-                RectangleF inputBox = new RectangleF(body.Left + 8F, body.Top, iconBox.Left - body.Left - 10F, body.Height);
+                RectangleF iconBox = new RectangleF(body.Right - 36F, body.Top + (body.Height - 24F) * 0.5F, 24F, 24F);
+                RectangleF inputBox = new RectangleF(body.Left + 8F, xGrip.Y - 9F, iconBox.Left - body.Left - 10F, 18F);
                 using (Font inputFont = new Font(SystemFonts.MessageBoxFont.FontFamily, 9F, FontStyle.Bold))
                 using (StringFormat format = new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter })
+                {
                     graphics.DrawString("X", inputFont, textBrush, inputBox, format);
+                    inputBox.Y = tGrip.Y - 9F;
+                    graphics.DrawString("T", inputFont, textBrush, inputBox, format);
+                }
                 if (ComponentIcon != null) graphics.DrawImage(ComponentIcon, iconBox);
             }
         }

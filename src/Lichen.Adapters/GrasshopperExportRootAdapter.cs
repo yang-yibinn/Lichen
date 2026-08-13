@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Grasshopper.Kernel;
+using Grasshopper.Kernel.Special;
 using Lichen.Core;
 
 namespace Lichen.Adapters
@@ -104,12 +105,87 @@ namespace Lichen.Adapters
                 }
             }
 
-            scope.Closure = new ExportRootScopeResolver().ResolveMany(snapshot, scope.Roots.Select(r => Id(r.InstanceGuid)), maximumNodes);
-            HashSet<string> includedEdges = new HashSet<string>(scope.Closure.ContributingEdges.Select(ExportRootScopeResolver.EdgeKey), StringComparer.OrdinalIgnoreCase);
-            scope.Edges = liveEdges.Where(e => includedEdges.Contains(e.Key)).OrderBy(e => e.Key, StringComparer.OrdinalIgnoreCase)
+            CaptureThalli(document, snapshot);
+            List<string> xRoots = new List<string>();
+            List<string> thallusRoots = new List<string>();
+            HashSet<string> seenThallusRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> terminalEdgeKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (IGH_DocumentObject rootObject in scope.Roots)
+            {
+                string rootId = Id(rootObject.InstanceGuid);
+                List<ContextEdge> xEdges = snapshot.Edges.Where(e => String.Equals(e.TargetNodeId, rootId, StringComparison.OrdinalIgnoreCase) && e.TargetParameterIndex == 0).ToList();
+                List<ContextEdge> tEdges = snapshot.Edges.Where(e => String.Equals(e.TargetNodeId, rootId, StringComparison.OrdinalIgnoreCase) && e.TargetParameterIndex == 1).ToList();
+                if (xEdges.Count > 0 && tEdges.Count > 0) throw new InvalidOperationException("A Lichen root cannot use X and T at the same time.");
+                if (tEdges.Count > 0)
+                {
+                    GrasshopperThallusIdentityRoute route = new GrasshopperThallusIdentityResolver().Resolve(document, rootObject, maximumNodes);
+                    foreach (string thallusId in route.Resolution.OrderedThallusIds)
+                        if (seenThallusRoots.Add(thallusId)) thallusRoots.Add(thallusId);
+                    terminalEdgeKeys.UnionWith(route.Resolution.RouteEdgeKeys);
+                }
+                else xRoots.Add(rootId);
+            }
+
+            HashSet<string> included = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> includedEdgeKeys = new HashSet<string>(terminalEdgeKeys, StringComparer.OrdinalIgnoreCase);
+            bool truncated = false;
+            if (xRoots.Count > 0)
+            {
+                ExportRootClosure xClosure = new ExportRootScopeResolver().ResolveMany(snapshot, xRoots, maximumNodes);
+                included.UnionWith(xClosure.IncludedObjectIds);
+                includedEdgeKeys.UnionWith(xClosure.ContributingEdges.Select(ExportRootScopeResolver.EdgeKey));
+                truncated = xClosure.NodeLimitReached;
+            }
+            if (thallusRoots.Count > 0)
+            {
+                ThallusClosure thallusClosure = new ThallusScopeResolver().Resolve(snapshot, thallusRoots, maximumNodes);
+                included.UnionWith(thallusClosure.IncludedObjectIds);
+                foreach (ContextEdge edge in snapshot.Edges)
+                    if (included.Contains(edge.SourceNodeId) && included.Contains(edge.TargetNodeId)) includedEdgeKeys.Add(ExportRootScopeResolver.EdgeKey(edge));
+            }
+            if (included.Count > (maximumNodes <= 0 ? 500 : maximumNodes))
+                throw new InvalidOperationException("The combined selected Lichen scopes exceed the object limit.");
+            scope.Closure = new ExportRootClosure
+            {
+                RootObjectIds = scope.Roots.Select(r => Id(r.InstanceGuid)).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList(),
+                IncludedObjectIds = included.OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList(),
+                ContributingEdges = snapshot.Edges.Where(e => includedEdgeKeys.Contains(ExportRootScopeResolver.EdgeKey(e)))
+                    .OrderBy(ExportRootScopeResolver.EdgeKey, StringComparer.OrdinalIgnoreCase).ToList(),
+                NodeLimitReached = truncated
+            };
+            scope.Edges = liveEdges.Where(e => includedEdgeKeys.Contains(e.Key)).OrderBy(e => e.Key, StringComparer.OrdinalIgnoreCase)
                 .Select(e => new GrasshopperExportRootEdge { Edge = e.Edge, Source = e.Source, Target = e.Target }).ToList();
             scope.Roots = scope.Roots.OrderBy(r => r.InstanceGuid).ToList();
             return scope;
+        }
+
+        private static void CaptureThalli(GH_Document document, ContextSnapshot snapshot)
+        {
+            List<GH_Group> groups = document.Objects.OfType<GH_Group>().Where(group => SafeComponentGuid(group) == LichenComponentIds.Thallus)
+                .OrderBy(group => group.InstanceGuid).ToList();
+            Dictionary<Guid, IGH_DocumentObject> objects = document.Objects.GroupBy(o => o.InstanceGuid).ToDictionary(g => g.Key, g => g.First());
+            Dictionary<Guid, ContextThallus> byGroupId = new Dictionary<Guid, ContextThallus>();
+            foreach (GH_Group group in groups)
+            {
+                ContextThallus thallus = new ContextThallus { InstanceId = Id(group.InstanceGuid), Name = group.NickName ?? "Thallus" };
+                foreach (Guid id in group.ObjectIDs.OrderBy(value => value))
+                {
+                    IGH_DocumentObject member;
+                    if (!objects.TryGetValue(id, out member)) { thallus.MissingMemberIds.Add(Id(id)); continue; }
+                    Guid componentId = SafeComponentGuid(member);
+                    if (componentId == LichenComponentIds.ThallusEndpoint) { thallus.EndpointObjectId = Id(id); continue; }
+                    if (componentId != LichenComponentIds.Thallus && !(member is GH_Group)) thallus.DirectMemberIds.Add(Id(id));
+                }
+                byGroupId[group.InstanceGuid] = thallus; snapshot.Thalli.Add(thallus);
+            }
+            foreach (GH_Group parent in groups)
+                foreach (Guid id in parent.ObjectIDs.OrderBy(value => value))
+                {
+                    ContextThallus child;
+                    if (!byGroupId.TryGetValue(id, out child)) continue;
+                    string parentId = Id(parent.InstanceGuid);
+                    if (String.IsNullOrWhiteSpace(child.ParentThallusId) || StringComparer.OrdinalIgnoreCase.Compare(parentId, child.ParentThallusId) < 0) child.ParentThallusId = parentId;
+                }
         }
 
         public static bool IsExportRoot(IGH_DocumentObject obj)
@@ -118,6 +194,8 @@ namespace Lichen.Adapters
             try { return obj.ComponentGuid == LichenComponentIds.ExportRoot; }
             catch { return false; }
         }
+
+        private static Guid SafeComponentGuid(IGH_DocumentObject obj) { try { return obj.ComponentGuid; } catch { return Guid.Empty; } }
 
         private static string Id(Guid value) { return value.ToString("D").ToLowerInvariant(); }
 

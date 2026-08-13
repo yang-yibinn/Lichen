@@ -51,7 +51,18 @@ namespace Lichen.Plugin
             {
                 using (LichenExportDialog dialog = new LichenExportDialog()) dialog.ShowDialog(editor);
             };
-            menu.DropDownItems.Add(copy); editor.MainMenuStrip.Items.Add(menu);
+            ToolStripMenuItem createThallus = new ToolStripMenuItem("Create Thallus from Selection");
+            createThallus.Name = "LichenCreateThallus";
+            createThallus.Image = LichenInfo.CreateThallusIcon(24);
+            createThallus.ToolTipText = "Create a Lichen workflow group from the selected Grasshopper components.";
+            createThallus.Click += delegate
+            {
+                GH_Canvas canvas = Instances.ActiveCanvas;
+                if (canvas != null) LichenThallusCommands.CreateFromSelection(canvas);
+            };
+            menu.DropDownItems.Add(copy);
+            menu.DropDownItems.Add(createThallus);
+            editor.MainMenuStrip.Items.Add(menu);
         }
     }
 }

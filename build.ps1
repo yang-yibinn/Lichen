@@ -13,6 +13,8 @@ $pluginIcon = Join-Path $workspace 'src\Lichen.Plugin\Assets\lichen-icon-24.png'
 $pluginIconResourceName = 'Lichen.Plugin.Assets.lichen-icon-24.png'
 $selectChainIcon = Join-Path $workspace 'src\Lichen.Plugin\Assets\lichen-select-chain.svg'
 $selectChainIconResourceName = 'Lichen.Plugin.Assets.lichen-select-chain.svg'
+$createThallusIcon = Join-Path $workspace 'src\Lichen.Plugin\Assets\lichen-create-thallus.svg'
+$createThallusIconResourceName = 'Lichen.Plugin.Assets.lichen-create-thallus.svg'
 $yakTemplate = Join-Path $workspace 'packaging\yak'
 $yakManifest = Join-Path $yakTemplate 'manifest.yml'
 $yakReadme = Join-Path $yakTemplate 'README.md'
@@ -24,7 +26,7 @@ $yakPackage = Join-Path $artifacts 'yak\Lichen'
 $archive = Join-Path $artifacts ('Lichen-' + $releaseLabel + '.zip')
 $checksum = Join-Path $artifacts ('Lichen-' + $releaseLabel + '.sha256')
 
-foreach ($required in @($compiler, $rhino, $grasshopper, $ghio, $yak, $pluginIcon, $selectChainIcon, $yakManifest, $yakReadme, $yakIcon)) {
+foreach ($required in @($compiler, $rhino, $grasshopper, $ghio, $yak, $pluginIcon, $selectChainIcon, $createThallusIcon, $yakManifest, $yakReadme, $yakIcon)) {
     if (-not (Test-Path -LiteralPath $required)) { throw "Required build dependency not found: $required" }
 }
 
@@ -45,6 +47,11 @@ finally {
 [xml]$selectChainSvg = Get-Content -Raw -LiteralPath $selectChainIcon
 if ($selectChainSvg.DocumentElement.LocalName -ne 'svg' -or $selectChainSvg.DocumentElement.viewBox -ne '0 0 24 24') {
     throw "Select chain icon must be a valid SVG with a 0 0 24 24 viewBox."
+}
+
+[xml]$createThallusSvg = Get-Content -Raw -LiteralPath $createThallusIcon
+if ($createThallusSvg.DocumentElement.LocalName -ne 'svg' -or $createThallusSvg.DocumentElement.viewBox -ne '0 0 24 24') {
+    throw "Create Thallus icon must be a valid SVG with a 0 0 24 24 viewBox."
 }
 
 function Assert-ArtifactPath([string]$Path) {
@@ -85,7 +92,7 @@ $adapterSources = Get-ChildItem -LiteralPath (Join-Path $workspace 'src\Lichen.A
 Invoke-Compiler ($compilerDefaults + @('/target:library', ('/out:' + (Join-Path $output 'Lichen.Adapters.dll')), ('/r:' + (Join-Path $output 'Lichen.Core.dll')), ('/r:' + $rhino), ('/r:' + $grasshopper), ('/r:' + $ghio), '/r:System.Drawing.dll') + $adapterSources)
 
 $pluginSources = Get-ChildItem -LiteralPath (Join-Path $workspace 'src\Lichen.Plugin') -Recurse -Filter '*.cs' | Sort-Object FullName | ForEach-Object { $_.FullName }
-Invoke-Compiler ($compilerDefaults + @('/target:library', ('/out:' + (Join-Path $output 'Lichen.dll')), ('/resource:' + $pluginIcon + ',' + $pluginIconResourceName), ('/resource:' + $selectChainIcon + ',' + $selectChainIconResourceName), ('/r:' + (Join-Path $output 'Lichen.Core.dll')), ('/r:' + (Join-Path $output 'Lichen.Adapters.dll')), ('/r:' + $rhino), ('/r:' + $grasshopper), ('/r:' + $ghio), '/r:System.Drawing.dll', '/r:System.Windows.Forms.dll') + $pluginSources)
+Invoke-Compiler ($compilerDefaults + @('/target:library', ('/out:' + (Join-Path $output 'Lichen.dll')), ('/resource:' + $pluginIcon + ',' + $pluginIconResourceName), ('/resource:' + $selectChainIcon + ',' + $selectChainIconResourceName), ('/resource:' + $createThallusIcon + ',' + $createThallusIconResourceName), ('/r:' + (Join-Path $output 'Lichen.Core.dll')), ('/r:' + (Join-Path $output 'Lichen.Adapters.dll')), ('/r:' + $rhino), ('/r:' + $grasshopper), ('/r:' + $ghio), '/r:System.Drawing.dll', '/r:System.Windows.Forms.dll') + $pluginSources)
 
 $pluginAssembly = [System.Reflection.Assembly]::ReflectionOnlyLoadFrom((Join-Path $output 'Lichen.dll'))
 if (-not ($pluginAssembly.GetManifestResourceNames() -contains $pluginIconResourceName)) {
@@ -93,6 +100,9 @@ if (-not ($pluginAssembly.GetManifestResourceNames() -contains $pluginIconResour
 }
 if (-not ($pluginAssembly.GetManifestResourceNames() -contains $selectChainIconResourceName)) {
     throw "Compiled plugin is missing its embedded Select chain icon."
+}
+if (-not ($pluginAssembly.GetManifestResourceNames() -contains $createThallusIconResourceName)) {
+    throw "Compiled plugin is missing its embedded Create Thallus icon."
 }
 Copy-Item -LiteralPath (Join-Path $output 'Lichen.dll') -Destination (Join-Path $output 'Lichen.gha') -Force
 

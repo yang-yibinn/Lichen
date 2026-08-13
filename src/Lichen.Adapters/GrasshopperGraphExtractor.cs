@@ -82,9 +82,10 @@ namespace Lichen.Adapters
                 }
             }
 
-            CaptureGroups(objects, nodes, snapshot);
             CaptureEdges(inputs, outputs, snapshot);
-            CaptureExportRoots(objects, snapshot);
+            CaptureThalli(objects, nodes, snapshot);
+            CaptureGroups(objects, nodes, snapshot);
+            CaptureExportRoots(document, objects, snapshot, context.MaximumNodes);
             if (!clusterInternal) CaptureIncludedRootClusters(objects, nodes, snapshot, includeScripts, includeRuntime, context);
             snapshot.Nodes = snapshot.Nodes.OrderBy(n => n.InstanceId, StringComparer.OrdinalIgnoreCase).ToList();
             snapshot.Edges = snapshot.Edges.OrderBy(EdgeKey, StringComparer.OrdinalIgnoreCase).ToList();
@@ -276,21 +277,97 @@ namespace Lichen.Adapters
             }
         }
 
-        private static void CaptureExportRoots(IEnumerable<IGH_DocumentObject> objects, ContextSnapshot snapshot)
+        private static void CaptureExportRoots(GH_Document document, IEnumerable<IGH_DocumentObject> objects, ContextSnapshot snapshot, int maximumNodes)
         {
             foreach (IGH_DocumentObject obj in objects.Where(o => SafeComponentGuid(o) == LichenComponentIds.ExportRoot).OrderBy(o => Id(o.InstanceGuid), StringComparer.OrdinalIgnoreCase))
             {
                 string objectId = Id(obj.InstanceGuid);
                 ExportRootDefinition root = new ExportRootDefinition { ObjectId = objectId, Label = String.IsNullOrWhiteSpace(obj.NickName) ? "Lichen" : obj.NickName.Trim() };
-                root.SourceObjectIds = snapshot.Edges.Where(e => String.Equals(e.TargetNodeId, objectId, StringComparison.OrdinalIgnoreCase))
+                root.SourceObjectIds = snapshot.Edges.Where(e => String.Equals(e.TargetNodeId, objectId, StringComparison.OrdinalIgnoreCase) && e.TargetParameterIndex == 0)
                     .Select(e => e.SourceNodeId).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+                List<string> tSources = snapshot.Edges.Where(e => String.Equals(e.TargetNodeId, objectId, StringComparison.OrdinalIgnoreCase) && e.TargetParameterIndex == 1)
+                    .Select(e => e.SourceNodeId).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+                if (tSources.Count > 0)
+                {
+                    try
+                    {
+                        GrasshopperThallusIdentityRoute route = new GrasshopperThallusIdentityResolver().Resolve(document, obj, maximumNodes);
+                        root.ThallusIds = new List<string>(route.Resolution.OrderedThallusIds);
+                    }
+                    catch (Exception ex)
+                    {
+                        root.InvalidThallusSourceIds.AddRange(tSources);
+                        root.ThallusRouteError = OneLine(ex.Message);
+                        snapshot.Notes.Add("Lichen.T identity routing is invalid: " + root.ThallusRouteError);
+                    }
+                }
                 snapshot.ExportRoots.Add(root);
             }
         }
 
+        private static void CaptureThalli(IList<IGH_DocumentObject> objects, Dictionary<string, ContextNode> nodes, ContextSnapshot snapshot)
+        {
+            Dictionary<Guid, IGH_DocumentObject> byGuid = objects.GroupBy(o => o.InstanceGuid).ToDictionary(g => g.Key, g => g.First());
+            List<GH_Group> groups = objects.OfType<GH_Group>().Where(g => SafeComponentGuid(g) == LichenComponentIds.Thallus)
+                .OrderBy(g => Id(g.InstanceGuid), StringComparer.OrdinalIgnoreCase).ToList();
+            Dictionary<Guid, ContextThallus> captured = new Dictionary<Guid, ContextThallus>();
+            foreach (GH_Group group in groups)
+            {
+                ILichenThallusMetadata metadata = group as ILichenThallusMetadata;
+                ContextThallus value = new ContextThallus
+                {
+                    InstanceId = Id(group.InstanceGuid),
+                    Name = String.IsNullOrWhiteSpace(group.NickName) ? "Thallus" : group.NickName.Trim(),
+                    Description = metadata == null ? "" : metadata.ThallusDescription ?? ""
+                };
+                if (metadata != null && metadata.ThallusProperties != null)
+                    value.Properties = metadata.ThallusProperties.Where(p => p != null && !String.IsNullOrWhiteSpace(p.Key))
+                        .Select(p => new ContextMetadataEntry { Key = p.Key.Trim(), Value = p.Value == null ? "" : p.Value.Trim() })
+                        .OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase).ThenBy(p => p.Value, StringComparer.Ordinal).ToList();
+                foreach (Guid memberId in group.ObjectIDs.OrderBy(id => id))
+                {
+                    IGH_DocumentObject member;
+                    if (!byGuid.TryGetValue(memberId, out member)) { value.MissingMemberIds.Add(Id(memberId)); continue; }
+                    Guid componentId = SafeComponentGuid(member);
+                    if (componentId == LichenComponentIds.ThallusEndpoint)
+                    {
+                        if (String.IsNullOrWhiteSpace(value.EndpointObjectId)) value.EndpointObjectId = Id(memberId);
+                        continue;
+                    }
+                    if (componentId == LichenComponentIds.Thallus || member is GH_Group) continue;
+                    string id = Id(memberId);
+                    if (nodes.ContainsKey(id)) value.DirectMemberIds.Add(id);
+                    else value.MissingMemberIds.Add(id);
+                }
+                value.DirectMemberIds = value.DirectMemberIds.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+                value.MissingMemberIds = value.MissingMemberIds.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+                captured[group.InstanceGuid] = value; snapshot.Thalli.Add(value);
+                if ((snapshot.SelectedObjectIds ?? new List<string>()).Contains(value.InstanceId, StringComparer.OrdinalIgnoreCase))
+                    snapshot.SelectedThallusIds.Add(value.InstanceId);
+            }
+
+            foreach (GH_Group parent in groups)
+                foreach (Guid memberId in parent.ObjectIDs.OrderBy(id => id))
+                {
+                    ContextThallus child;
+                    if (!captured.TryGetValue(memberId, out child) || memberId == parent.InstanceGuid) continue;
+                    string parentId = Id(parent.InstanceGuid);
+                    if (String.IsNullOrWhiteSpace(child.ParentThallusId)) child.ParentThallusId = parentId;
+                    else if (!String.Equals(child.ParentThallusId, parentId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        string kept = new[] { child.ParentThallusId, parentId }.OrderBy(id => id, StringComparer.OrdinalIgnoreCase).First();
+                        snapshot.Notes.Add("Thallus " + child.InstanceId + " belongs to multiple parent Thalli; Lichen retained " + kept + " deterministically.");
+                        child.ParentThallusId = kept;
+                    }
+                }
+            snapshot.Thalli = snapshot.Thalli.OrderBy(t => t.InstanceId, StringComparer.OrdinalIgnoreCase).ToList();
+            snapshot.SelectedThallusIds = snapshot.SelectedThallusIds.Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
         private static void CaptureGroups(IList<IGH_DocumentObject> objects, Dictionary<string, ContextNode> nodes, ContextSnapshot snapshot)
         {
-            foreach (GH_Group group in objects.OfType<GH_Group>())
+            foreach (GH_Group group in objects.OfType<GH_Group>().Where(g => SafeComponentGuid(g) != LichenComponentIds.Thallus))
             {
                 ContextGroup value = new ContextGroup { InstanceId = Id(group.InstanceGuid), Name = group.NickName ?? group.Name ?? "Group" };
                 foreach (Guid member in group.ObjectIDs.OrderBy(g => g))
@@ -337,7 +414,7 @@ namespace Lichen.Adapters
                     List<string> values = new List<string>(); bool simple = structure.DataCount <= 8;
                     if (simple)
                     {
-                        IEnumerator data = (IEnumerator)structure.AllData(true);
+                        IEnumerator data = ((IEnumerable)structure.AllData(true)).GetEnumerator();
                         while (data.MoveNext())
                         {
                             object item = data.Current;

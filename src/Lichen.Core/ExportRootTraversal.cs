@@ -7,6 +7,8 @@ namespace Lichen.Core
     public static class LichenComponentIds
     {
         public static readonly Guid ExportRoot = new Guid("d7b7e6f4-8c52-4f42-a9e5-9d6f39e0c128");
+        public static readonly Guid Thallus = new Guid("4ae5a7b2-c93d-47d2-9f18-a924e1d5fd63");
+        public static readonly Guid ThallusEndpoint = new Guid("f478f97d-34d4-405d-bc4f-e739dc04b9f7");
     }
 
     public sealed class ExportRootScopeResolver

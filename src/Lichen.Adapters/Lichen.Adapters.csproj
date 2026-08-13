@@ -4,6 +4,6 @@
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "><OutputPath>bin\Release\</OutputPath><DebugType>pdbonly</DebugType><Optimize>true</Optimize></PropertyGroup>
   <ItemGroup><Reference Include="System"/><Reference Include="System.Core"/><Reference Include="System.Drawing"/><Reference Include="RhinoCommon"><HintPath>C:\Program Files\Rhino 8\System\RhinoCommon.dll</HintPath><Private>False</Private></Reference><Reference Include="GH_IO"><HintPath>C:\Program Files\Rhino 8\Plug-ins\Grasshopper\GH_IO.dll</HintPath><Private>False</Private></Reference><Reference Include="Grasshopper"><HintPath>C:\Program Files\Rhino 8\Plug-ins\Grasshopper\Grasshopper.dll</HintPath><Private>False</Private></Reference></ItemGroup>
   <ItemGroup><ProjectReference Include="..\Lichen.Core\Lichen.Core.csproj"><Project>{485CD65C-9966-4C71-BC7B-A7C51E2B8C2E}</Project><Name>Lichen.Core</Name></ProjectReference></ItemGroup>
-  <ItemGroup><Compile Include="GrasshopperGraphExtractor.cs"/><Compile Include="GrasshopperExportRootAdapter.cs"/><Compile Include="Properties\AssemblyInfo.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="GrasshopperGraphExtractor.cs"/><Compile Include="GrasshopperExportRootAdapter.cs"/><Compile Include="GrasshopperThallusIdentityRouting.cs"/><Compile Include="Properties\AssemblyInfo.cs"/></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

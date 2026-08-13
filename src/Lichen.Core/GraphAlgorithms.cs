@@ -14,37 +14,72 @@ namespace Lichen.Core
 
             List<string> notes = new List<string>(snapshot.Notes ?? new List<string>());
             HashSet<string> available = new HashSet<string>(snapshot.Nodes.Select(n => n.InstanceId), StringComparer.OrdinalIgnoreCase);
-            HashSet<string> selected = new HashSet<string>((snapshot.SelectedObjectIds ?? new List<string>()).Where(available.Contains), StringComparer.OrdinalIgnoreCase);
-            if (options.ScopeMode != ScopeMode.EntireDocument && options.ScopeMode != ScopeMode.ExportRoot && selected.Count == 0)
-                throw new InvalidOperationException("No Grasshopper objects are selected for the requested scope.");
-
             int maximum = options.MaximumNodes <= 0 ? 500 : options.MaximumNodes;
+            HashSet<string> originallySelected = new HashSet<string>((snapshot.SelectedObjectIds ?? new List<string>()).Where(available.Contains), StringComparer.OrdinalIgnoreCase);
+            originallySelected.ExceptWith((snapshot.Nodes ?? new List<ContextNode>()).Where(IsLichenInfrastructure).Select(n => n.InstanceId));
+            HashSet<string> selectionSeeds = new HashSet<string>(originallySelected, StringComparer.OrdinalIgnoreCase);
+            ThallusClosure selectedThallusClosure = null;
+            if (options.ScopeMode != ScopeMode.EntireDocument && options.ScopeMode != ScopeMode.ExportRoot)
+            {
+                List<string> selectedThalli = (snapshot.SelectedThallusIds ?? new List<string>()).Where(id => !String.IsNullOrWhiteSpace(id))
+                    .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+                if (selectedThalli.Count > 0)
+                {
+                    selectedThallusClosure = new ThallusScopeResolver().ResolveSelected(snapshot, selectedThalli, maximum);
+                    selectionSeeds.UnionWith(selectedThallusClosure.IncludedObjectIds);
+                }
+                if (selectionSeeds.Count == 0)
+                    throw new InvalidOperationException("No Grasshopper objects or Thalli are selected for the requested scope.");
+            }
+
             ExportRootClosure rootClosure = null;
+            ThallusClosure thallusClosure = null;
+            ExportRootDefinition rootDefinition = null;
             HashSet<string> included;
             if (options.ScopeMode == ScopeMode.ExportRoot)
             {
-                rootClosure = new ExportRootScopeResolver().Resolve(snapshot, options.RootObjectId, maximum);
-                included = new HashSet<string>(rootClosure.IncludedObjectIds, StringComparer.OrdinalIgnoreCase);
-                if (rootClosure.NodeLimitReached) AddLimitNote(notes, maximum);
+                rootDefinition = (snapshot.ExportRoots ?? new List<ExportRootDefinition>()).FirstOrDefault(r => String.Equals(r.ObjectId, options.RootObjectId, StringComparison.OrdinalIgnoreCase));
+                List<string> xSources = rootDefinition == null ? new List<string>() : (rootDefinition.SourceObjectIds ?? new List<string>());
+                List<string> thallusSources = rootDefinition == null ? new List<string>() : (rootDefinition.ThallusIds ?? new List<string>());
+                bool hasInvalidThallusSource = rootDefinition != null && (rootDefinition.InvalidThallusSourceIds ?? new List<string>()).Count > 0;
+                if (xSources.Count > 0 && (thallusSources.Count > 0 || hasInvalidThallusSource))
+                    throw new InvalidOperationException("This Lichen root has both X and T connected. Use X for an upstream closure or T for exact Thallus membership, not both on the same root.");
+                if (hasInvalidThallusSource)
+                    throw new InvalidOperationException(String.IsNullOrWhiteSpace(rootDefinition.ThallusRouteError)
+                        ? "Lichen.T is connected to a source that is not a valid owned Thallus identity route. Repair or disconnect that source before exporting this root."
+                        : rootDefinition.ThallusRouteError);
+                if (thallusSources.Count > 0)
+                {
+                    thallusClosure = new ThallusScopeResolver().Resolve(snapshot, thallusSources, maximum);
+                    included = new HashSet<string>(thallusClosure.IncludedObjectIds, StringComparer.OrdinalIgnoreCase);
+                }
+                else
+                {
+                    rootClosure = new ExportRootScopeResolver().Resolve(snapshot, options.RootObjectId, maximum);
+                    included = new HashSet<string>(rootClosure.IncludedObjectIds, StringComparer.OrdinalIgnoreCase);
+                    if (rootClosure.NodeLimitReached) AddLimitNote(notes, maximum);
+                }
             }
-            else included = ResolveScope(snapshot, options.ScopeMode, selected, maximum, notes);
+            else included = ResolveScope(snapshot, options.ScopeMode, selectionSeeds, maximum, notes);
 
             ContextDocument document = new ContextDocument();
             document.Name = EmptyTo(snapshot.Name, "Untitled");
             document.RhinoVersion = EmptyTo(snapshot.RhinoVersion, "unknown");
             document.GrasshopperVersion = EmptyTo(snapshot.GrasshopperVersion, "unknown");
-            document.Scope.Mode = ScopeName(options.ScopeMode);
+            document.Scope.Mode = thallusClosure == null ? ScopeName(options.ScopeMode) : "thallus_root";
             document.Scope.MaximumNodes = maximum;
             document.Scope.NodeLimitReached = notes.Any(n => n.IndexOf("node limit", StringComparison.OrdinalIgnoreCase) >= 0);
-            document.Scope.SelectedObjectIds = selected.OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
+            document.Scope.SelectedObjectIds = originallySelected.OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
+            document.Scope.SelectedThallusIds = selectedThallusClosure == null ? new List<string>() : new List<string>(selectedThallusClosure.RootThallusIds);
             document.Scope.IncludedObjectIds = included.OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
-            if (rootClosure != null)
+            if (options.ScopeMode == ScopeMode.ExportRoot)
             {
-                ExportRootDefinition definition = (snapshot.ExportRoots ?? new List<ExportRootDefinition>()).FirstOrDefault(r => String.Equals(r.ObjectId, options.RootObjectId, StringComparison.OrdinalIgnoreCase));
-                document.Scope.RootLabel = !String.IsNullOrWhiteSpace(options.RootLabel) ? options.RootLabel.Trim() : (definition == null ? "Lichen" : definition.Label);
-                document.Scope.RootSourceObjectIds = (definition == null ? rootClosure.ContributingEdges.Where(e => String.Equals(e.TargetNodeId, options.RootObjectId, StringComparison.OrdinalIgnoreCase)).Select(e => e.SourceNodeId) : definition.SourceObjectIds)
+                document.Scope.RootLabel = !String.IsNullOrWhiteSpace(options.RootLabel) ? options.RootLabel.Trim() : (rootDefinition == null ? "Lichen" : rootDefinition.Label);
+                if (thallusClosure != null) document.Scope.RootThallusIds = new List<string>(thallusClosure.RootThallusIds);
+                else document.Scope.RootSourceObjectIds = (rootDefinition == null ? rootClosure.ContributingEdges.Where(e => String.Equals(e.TargetNodeId, options.RootObjectId, StringComparison.OrdinalIgnoreCase)).Select(e => e.SourceNodeId) : rootDefinition.SourceObjectIds)
                     .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
                 document.Scope.SelectedObjectIds.Clear();
+                document.Scope.SelectedThallusIds.Clear();
             }
             document.UserContext.Purpose = options.Purpose ?? "";
             document.UserContext.RequestedTask = options.RequestedTask ?? "";
@@ -54,7 +89,7 @@ namespace Lichen.Core
             foreach (ContextNode source in snapshot.Nodes.Where(n => included.Contains(n.InstanceId)).OrderBy(NodeSortKey, StringComparer.OrdinalIgnoreCase))
             {
                 ContextNode node = CloneNode(source);
-                node.OriginallySelected = selected.Contains(node.InstanceId);
+                node.OriginallySelected = originallySelected.Contains(node.InstanceId);
                 string clusterPurpose;
                 if (node.ClusterGraph != null && options.ClusterPurposeNotes != null && options.ClusterPurposeNotes.TryGetValue(node.InstanceId, out clusterPurpose) && !String.IsNullOrWhiteSpace(clusterPurpose))
                     node.ClusterGraph.UserProvidedPurpose = clusterPurpose.Trim();
@@ -63,9 +98,18 @@ namespace Lichen.Core
                 document.Nodes.Add(node);
             }
 
-            BuildEdgesAndBoundaries(snapshot.Edges, included, document, snapshot.Nodes, options.ScopeMode != ScopeMode.ExportRoot);
+            BuildEdgesAndBoundaries(snapshot.Edges, included, document, snapshot.Nodes, options.ScopeMode != ScopeMode.ExportRoot || thallusClosure != null);
             document.Groups = (snapshot.Groups ?? new List<ContextGroup>())
                 .Where(g => g.MemberIds.Any(included.Contains)).Select(CloneGroup).OrderBy(g => g.InstanceId, StringComparer.OrdinalIgnoreCase).ToList();
+            ThallusClosure organizationClosure = thallusClosure ?? selectedThallusClosure;
+            if (organizationClosure != null)
+            {
+                HashSet<string> relevant = new HashSet<string>(organizationClosure.IncludedThallusIds, StringComparer.OrdinalIgnoreCase);
+                document.Thalli = (snapshot.Thalli ?? new List<ContextThallus>()).Where(t => relevant.Contains(t.InstanceId)).Select(t => CloneThallus(t, organizationClosure))
+                    .OrderBy(t => t.InstanceId, StringComparer.OrdinalIgnoreCase).ToList();
+                foreach (ContextThallus thallus in document.Thalli)
+                    if (thallus.MissingMemberIds.Count > 0) document.ExtractionNotes.Add("Thallus “" + EmptyTo(thallus.Name, "Thallus") + "” references " + thallus.MissingMemberIds.Count + " missing object" + (thallus.MissingMemberIds.Count == 1 ? "." : "s."));
+            }
             BuildClusterBlackBoxSummaries(document);
             BuildDependencies(document);
             document.Analysis = new ComponentSemanticsService().Analyze(document);
@@ -77,7 +121,7 @@ namespace Lichen.Core
         {
             HashSet<string> included = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             IEnumerable<string> initial = mode == ScopeMode.EntireDocument
-                ? snapshot.Nodes.Select(n => n.InstanceId).OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+                ? snapshot.Nodes.Where(n => !IsLichenInfrastructure(n)).Select(n => n.InstanceId).OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
                 : selected.OrderBy(s => s, StringComparer.OrdinalIgnoreCase);
             AddBounded(initial, included, maximum, notes);
             if (mode == ScopeMode.SelectedOnly || mode == ScopeMode.EntireDocument || included.Count >= maximum) return included;
@@ -126,6 +170,14 @@ namespace Lichen.Core
                 if (included.Count >= maximum) { AddLimitNote(notes, maximum); break; }
                 included.Add(id);
             }
+        }
+
+        private static bool IsLichenInfrastructure(ContextNode node)
+        {
+            if (node == null) return false;
+            Guid typeId;
+            if (!Guid.TryParse(node.TypeId, out typeId)) return false;
+            return typeId == LichenComponentIds.ExportRoot || typeId == LichenComponentIds.Thallus || typeId == LichenComponentIds.ThallusEndpoint;
         }
 
         private static void AddLimitNote(List<string> notes, int maximum)
@@ -416,6 +468,25 @@ namespace Lichen.Core
             };
         }
 
+        private static ContextThallus CloneThallus(ContextThallus source, ThallusClosure closure)
+        {
+            List<string> effective;
+            closure.EffectiveMemberIds.TryGetValue(source.InstanceId, out effective);
+            return new ContextThallus
+            {
+                InstanceId = source.InstanceId,
+                Name = source.Name,
+                Description = source.Description,
+                ParentThallusId = !String.IsNullOrWhiteSpace(source.ParentThallusId) && closure.IncludedThallusIds.Contains(source.ParentThallusId, StringComparer.OrdinalIgnoreCase)
+                    ? source.ParentThallusId : null,
+                DirectMemberIds = (source.DirectMemberIds ?? new List<string>()).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList(),
+                EffectiveMemberIds = new List<string>(effective ?? new List<string>()),
+                MissingMemberIds = (source.MissingMemberIds ?? new List<string>()).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList(),
+                Properties = (source.Properties ?? new List<ContextMetadataEntry>()).Select(p => new ContextMetadataEntry { Key = p.Key, Value = p.Value })
+                    .OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase).ThenBy(p => p.Value, StringComparer.Ordinal).ToList()
+            };
+        }
+
         private static ContextEdge CloneEdge(ContextEdge source)
         {
             return new ContextEdge
@@ -487,6 +558,7 @@ namespace Lichen.Core
         {
             ContextAnalysis analysis = new ContextAnalysis();
             List<ContextNode> active = ContextGraphService.TopologicalOrder(document).Where(n => !passiveNames.Contains(n.Name) && !IsCanvasGroup(n)).ToList();
+            FunctionalEvidenceSet functionalEvidence = FunctionalEvidenceAnalyzer.Analyze(document, active);
             HashSet<string> consumed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             if (ContainsAll(active, "Deconstruct Brep", "Length", "Division", "Quad Panels"))
@@ -518,12 +590,8 @@ namespace Lichen.Core
             foreach (ContextNode node in active.Where(n => !consumed.Contains(n.InstanceId)))
                 analysis.DetectedOperations.Add(OperationFor(node, analysis));
 
-            if (ContainsAll(active, "Divide Domain²", "Isotrim"))
-                analysis.DetectedPatterns.Add("Strong inference: the component sequence performs surface subdivision.");
-            if (ContainsAll(active, "Bounds", "Remap Numbers"))
-                analysis.DetectedPatterns.Add("Strong inference: the component sequence normalizes or rescales numeric values.");
-            if (ContainsAll(active, "Quad Panels", "Image Sampler", "Cull Pattern"))
-                analysis.DetectedPatterns.Add("Possible inference: image-derived values control which quadrilateral panels are retained.");
+            foreach (FunctionalEvidence evidence in functionalEvidence.Items)
+                analysis.DetectedPatterns.Add((evidence.ReachesCapturedOutput ? "Supported functional inference: " : "Supported auxiliary-branch inference: ") + evidence.Explanation);
 
             List<ScriptBehaviorSummary> scriptEvidence = active.Where(n => n.Script != null).Select(ScriptBehaviorAnalyzer.Analyze).ToList();
             List<string> scriptRoles = scriptEvidence.Select(s => s.PossibleRole).Where(r => !String.IsNullOrWhiteSpace(r))
@@ -538,11 +606,44 @@ namespace Lichen.Core
                 .Select(NormalizeClusterPurpose).Distinct(StringComparer.OrdinalIgnoreCase).Take(3).ToList();
             bool optimization = active.Any(n => (n.RuntimeTypeName ?? "").IndexOf("Galapagos", StringComparison.OrdinalIgnoreCase) >= 0
                 || (n.ControlLinks ?? new List<ContextControlLink>()).Any(l => l.Role == "genome" || l.Role == "fitness"));
-            analysis.InferredPurpose = SynthesizePurpose(active, scriptDescriptions, scriptRoles, clusterPurposes, optimization);
+            analysis.InferredPurpose = SynthesizePurpose(active, scriptDescriptions, scriptRoles, clusterPurposes, optimization, functionalEvidence);
+            List<ContextThallus> thalli = (document.Thalli ?? new List<ContextThallus>()).Where(t => t != null)
+                .OrderBy(t => t.InstanceId, StringComparer.OrdinalIgnoreCase).ToList();
+            HashSet<string> duplicateNames = new HashSet<string>(thalli.Where(t => !String.IsNullOrWhiteSpace(t.Name))
+                .GroupBy(t => t.Name.Trim(), StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1).Select(group => group.Key), StringComparer.OrdinalIgnoreCase);
+            List<string> thallusEvidence = thalli.Select(t => ThallusPurposeEvidence(t, duplicateNames))
+                .Where(value => !String.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase).Take(4).ToList();
+            if (thallusEvidence.Count > 0) analysis.InferredPurpose += " User-provided Thallus context adds: " + NaturalJoin(thallusEvidence) + ".";
             return analysis;
         }
 
-        private static string SynthesizePurpose(List<ContextNode> active, List<string> scriptDescriptions, List<string> scriptRoles, List<string> clusterPurposes, bool optimization)
+        private static string ThallusPurposeEvidence(ContextThallus thallus, HashSet<string> duplicateNames)
+        {
+            if (thallus == null) return "";
+            List<string> values = new List<string>();
+            if (!String.IsNullOrWhiteSpace(thallus.Description)) values.Add(BoundedEvidence(thallus.Description, 180));
+            foreach (ContextMetadataEntry property in (thallus.Properties ?? new List<ContextMetadataEntry>()).Where(p => p != null && !String.IsNullOrWhiteSpace(p.Key) && !String.IsNullOrWhiteSpace(p.Value)))
+            {
+                string key = property.Key.Trim();
+                if (!String.Equals(key, "purpose", StringComparison.OrdinalIgnoreCase) && !String.Equals(key, "role", StringComparison.OrdinalIgnoreCase)
+                    && !String.Equals(key, "stage", StringComparison.OrdinalIgnoreCase) && !String.Equals(key, "discipline", StringComparison.OrdinalIgnoreCase)) continue;
+                values.Add(key + "=" + BoundedEvidence(property.Value, 100));
+            }
+            if (values.Count == 0) return "";
+            string name = String.IsNullOrWhiteSpace(thallus.Name) ? "Thallus" : thallus.Name.Trim();
+            if (String.Equals(name, "Thallus", StringComparison.OrdinalIgnoreCase) || (duplicateNames != null && duplicateNames.Contains(name)))
+                name += " [" + ShortId(thallus.InstanceId) + "]";
+            return name + " (“" + String.Join("; ", values.Take(3).ToArray()) + "”)";
+        }
+
+        private static string ShortId(string value)
+        {
+            string id = value ?? "";
+            return id.Length <= 8 ? id : id.Substring(0, 8);
+        }
+
+        private static string SynthesizePurpose(List<ContextNode> active, List<string> scriptDescriptions, List<string> scriptRoles, List<string> clusterPurposes,
+            bool optimization, FunctionalEvidenceSet functionalEvidence)
         {
             if (optimization && scriptRoles.Count > 0)
             {
@@ -552,6 +653,7 @@ namespace Lichen.Core
             }
 
             List<string> stages = new List<string>();
+            List<string> auxiliaryStages = new List<string>();
             bool iterativeCurveProcessing = (ContainsAll(active, "Loop Start", "Loop End") || ContainsAll(active, "Fast Loop Start", "Fast Loop End"))
                 && active.Any(n => String.Equals(n.Name, "Discontinuity", StringComparison.OrdinalIgnoreCase)
                     || String.Equals(n.Name, "Shatter", StringComparison.OrdinalIgnoreCase)
@@ -567,43 +669,62 @@ namespace Lichen.Core
                 if (Has(active, "Trim with Region")) stages.Add("region-based curve trimming");
                 if (ContainsAll(active, "Merge", "Clean Tree")) stages.Add("result accumulation and cleanup");
             }
-            if (ContainsAll(active, "Divide Domain²", "Isotrim") || ContainsAll(active, "Divide Domain2", "Isotrim")) stages.Add("surface subdivision");
-            if (ContainsAll(active, "Bounds", "Remap Numbers")) stages.Add("numeric normalization or rescaling");
-            if (ContainsAll(active, "Project", "Divide Curve", "Perp Frame", "Rectangle", "Sweep1"))
-            {
-                stages.Add("curve projection onto Breps");
-                stages.Add("oriented section construction along divided curves");
-                stages.Add("sweep geometry construction");
-            }
-            bool curveNetworkPreparation = Has(active, "Offset Curve") && ContainsAll(active, "Discontinuity", "Shatter", "Fit Curve Smooth", "Join Curves");
-            bool intersectionAngleAnalysis = ContainsAll(active, "Curve | Curve", "Vector 2Pt", "Angle");
-            bool angleRemapping = intersectionAngleAnalysis && ContainsAll(active, "Degrees", "Remap Numbers");
-            bool variableFillet = scriptRoles.Any(role => role.IndexOf("fillet", StringComparison.OrdinalIgnoreCase) >= 0);
-            if (curveNetworkPreparation) stages.Add("curve-network offsetting, segmentation, and smoothing");
-            if (intersectionAngleAnalysis) stages.Add("intersection-angle measurement");
-            if (angleRemapping && variableFillet) stages.Add("remapping measured angles into per-location fillet radii");
-            else if (angleRemapping) stages.Add("remapping measured angles into downstream control values");
-            if (ContainsAll(active, "Quad Panels", "Image Sampler", "Cull Pattern")) stages.Add("image-driven filtering of quadrilateral panels using image-derived values");
-            else
+            ClassifyStage(functionalEvidence, FunctionalEvidenceAnalyzer.SurfaceSubdivisionRule, "surface subdivision", stages, auxiliaryStages);
+            ClassifyStage(functionalEvidence, FunctionalEvidenceAnalyzer.NumericNormalizationRule, "numeric normalization or rescaling", stages, auxiliaryStages);
+            ClassifyStage(functionalEvidence, FunctionalEvidenceAnalyzer.DiamondPanelGenerationRule, "diamond-panel generation", stages, auxiliaryStages);
+            ClassifyStage(functionalEvidence, FunctionalEvidenceAnalyzer.DiagridStructureGenerationRule, "surface diagrid-structure generation", stages, auxiliaryStages);
+            ClassifyStage(functionalEvidence, FunctionalEvidenceAnalyzer.SurfacePointCurveNetworkRule,
+                "graph-mapped surface point-grid curve-network construction", stages, auxiliaryStages);
+            ClassifyStage(functionalEvidence, FunctionalEvidenceAnalyzer.TangentCurveReconstructionRule,
+                "selective curve reconstruction with start-tangent-constrained interpolation", stages, auxiliaryStages);
+            ClassifyStage(functionalEvidence, FunctionalEvidenceAnalyzer.SurfacePipeMorphRule,
+                "surface splitting and branching-pipe construction followed by Brep intersection and surface morphing", stages, auxiliaryStages);
+            ClassifyStage(functionalEvidence, FunctionalEvidenceAnalyzer.CurveGuidedSweepRule,
+                new[] { "curve projection onto Breps", "oriented section construction along divided curves", "sweep geometry construction" }, stages, auxiliaryStages);
+            ClassifyStage(functionalEvidence, FunctionalEvidenceAnalyzer.CurveNetworkPreparationRule, "curve-network offsetting, segmentation, and smoothing", stages, auxiliaryStages);
+            ClassifyStage(functionalEvidence, FunctionalEvidenceAnalyzer.IntersectionAngleRule, "intersection-angle measurement", stages, auxiliaryStages);
+            if (functionalEvidence.Has(FunctionalEvidenceAnalyzer.AngleDrivenFilletRule))
+                ClassifyStage(functionalEvidence, FunctionalEvidenceAnalyzer.AngleDrivenFilletRule, "remapping measured angles into per-location fillet radii", stages, auxiliaryStages);
+            else ClassifyStage(functionalEvidence, FunctionalEvidenceAnalyzer.AngleRemappingRule, "remapping measured angles into downstream control values", stages, auxiliaryStages);
+            ClassifyStage(functionalEvidence, FunctionalEvidenceAnalyzer.DitheredPanelPartitionRule,
+                "dithered image-driven partitioning of quadrilateral panels", stages, auxiliaryStages);
+            ClassifyStage(functionalEvidence, FunctionalEvidenceAnalyzer.ImagePanelFilteringRule,
+                "image-driven filtering of quadrilateral panels using image-derived values", stages, auxiliaryStages);
+            if (!functionalEvidence.Has(FunctionalEvidenceAnalyzer.DitheredPanelPartitionRule)
+                && !functionalEvidence.Has(FunctionalEvidenceAnalyzer.ImagePanelFilteringRule))
             {
                 if (Has(active, "Quad Panels")) stages.Add("quadrilateral panel generation");
                 if (ContainsAll(active, "Divide Surface", "Surface Closest Point", "Image Sampler")) stages.Add("image sampling across panel or surface coordinates");
             }
-            if (HasBlockPlacement(active)) stages.Add("block placement");
-            if (Has(active, "Group")) stages.Add("geometry grouping");
+            ClassifyStage(functionalEvidence, FunctionalEvidenceAnalyzer.BlockPlacementRule, "block placement", stages, auxiliaryStages);
+            ClassifyStage(functionalEvidence, FunctionalEvidenceAnalyzer.ModelBlockPlacementRule, "model-block instance placement", stages, auxiliaryStages);
+            if (!IsRuleFullySubsumedBy(functionalEvidence, FunctionalEvidenceAnalyzer.GeometryGroupingRule, FunctionalEvidenceAnalyzer.ModelBlockPlacementRule))
+                ClassifyStage(functionalEvidence, FunctionalEvidenceAnalyzer.GeometryGroupingRule, "geometry grouping", stages, auxiliaryStages);
             stages = stages.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            auxiliaryStages = auxiliaryStages.Where(stage => !stages.Contains(stage, StringComparer.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
             if (stages.Count > 0)
             {
-                bool boundedInterpretation = scriptDescriptions.Count > 0 || scriptRoles.Count > 0 || clusterPurposes.Count > 0
-                    || iterativeCurveProcessing || stages.Any(s => s.IndexOf("image-driven", StringComparison.OrdinalIgnoreCase) >= 0 || s.IndexOf("block placement", StringComparison.OrdinalIgnoreCase) >= 0);
-                string result = (boundedInterpretation ? "Possible inference from graph-wide evidence: " : "Strong inference from graph-wide evidence: ")
-                    + "the selected workflow combines " + NaturalJoin(stages) + ".";
+                bool boundedInterpretation = iterativeCurveProcessing;
+                string result = (boundedInterpretation ? "Possible functional inference from graph-wide evidence: " : "Supported functional inference from graph-wide evidence: ")
+                    + "the selected workflow performs " + NaturalJoin(stages) + ".";
+                if (auxiliaryStages.Count > 0)
+                    result += " Additional in-scope branches contain evidence of " + NaturalJoin(auxiliaryStages) + "; the matched paths do not reach a captured output.";
                 if (scriptDescriptions.Count > 0) result += " Author-provided script descriptions add: " + NaturalJoin(scriptDescriptions) + ".";
                 if (scriptRoles.Count > 0) result += " Recognized source behavior may " + NaturalJoin(scriptRoles) + ".";
                 if (clusterPurposes.Count > 0) result += " Inspected cluster internals also suggest " + NaturalJoin(clusterPurposes) + ".";
-                if (boundedInterpretation) result += " The broader design purpose remains uncertain.";
+                if (boundedInterpretation || scriptDescriptions.Count > 0 || scriptRoles.Count > 0 || clusterPurposes.Count > 0 || auxiliaryStages.Count > 0)
+                    result += " The broader design purpose remains uncertain.";
                 return result;
+            }
+            if (auxiliaryStages.Count > 0)
+            {
+                string result = "Supported functional inference from graph-wide evidence: additional in-scope branches contain evidence of "
+                    + NaturalJoin(auxiliaryStages) + ", but the matched paths do not reach a captured output.";
+                if (scriptDescriptions.Count > 0) result += " Author-provided script descriptions add: " + NaturalJoin(scriptDescriptions) + ".";
+                if (scriptRoles.Count > 0) result += " Recognized source behavior may " + NaturalJoin(scriptRoles) + ".";
+                return result + " The broader design purpose remains uncertain.";
             }
             if (scriptDescriptions.Count > 0 || scriptRoles.Count > 0)
             {
@@ -617,17 +738,27 @@ namespace Lichen.Core
             return "The broader design purpose cannot be determined from the graph alone.";
         }
 
-        private static bool HasBlockPlacement(IEnumerable<ContextNode> nodes)
+        private static void ClassifyStage(FunctionalEvidenceSet evidence, string ruleId, string stage, List<string> outputStages, List<string> auxiliaryStages)
         {
-            bool block = nodes.Any(n => ContainsToken(n.Name, "block") || ContainsToken(n.Nickname, "block"));
-            if (!block) return false;
-            string[] placementTokens = { "place", "insert", "orient", "transform", "move" };
-            return nodes.Any(n => placementTokens.Any(token => ContainsToken(n.Name, token) || ContainsToken(n.Nickname, token)));
+            ClassifyStage(evidence, ruleId, new[] { stage }, outputStages, auxiliaryStages);
         }
 
-        private static bool ContainsToken(string value, string token)
+        private static void ClassifyStage(FunctionalEvidenceSet evidence, string ruleId, IEnumerable<string> stages, List<string> outputStages, List<string> auxiliaryStages)
         {
-            return !String.IsNullOrWhiteSpace(value) && value.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0;
+            if (evidence.HasOutputRelevant(ruleId)) outputStages.AddRange(stages);
+            else if (evidence.HasAuxiliary(ruleId)) auxiliaryStages.AddRange(stages);
+        }
+
+        private static bool IsRuleFullySubsumedBy(FunctionalEvidenceSet evidence, string ruleId, string specializedRuleId)
+        {
+            List<FunctionalEvidence> candidates = evidence.Items.Where(item => String.Equals(item.RuleId, ruleId, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (candidates.Count == 0) return false;
+            HashSet<string> specializedNodes = new HashSet<string>(evidence.Items
+                .Where(item => String.Equals(item.RuleId, specializedRuleId, StringComparison.OrdinalIgnoreCase))
+                .SelectMany(item => item.MatchedNodeIds ?? new List<string>()), StringComparer.OrdinalIgnoreCase);
+            List<string> candidateResults = candidates.SelectMany(item => item.ResultNodeIds ?? new List<string>())
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            return specializedNodes.Count > 0 && candidateResults.Count > 0 && candidateResults.All(specializedNodes.Contains);
         }
 
         private static string NaturalJoin(IList<string> values)
@@ -648,7 +779,7 @@ namespace Lichen.Core
         private static string NormalizeClusterPurpose(string purpose)
         {
             string value = (purpose ?? "").Trim();
-            string[] prefixes = { "Strong inference:", "Possible inference:" };
+            string[] prefixes = { "Supported functional inference from graph-wide evidence:", "Possible functional inference from graph-wide evidence:", "Strong inference:", "Possible inference:" };
             foreach (string prefix in prefixes)
                 if (value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) { value = value.Substring(prefix.Length).Trim(); break; }
             if (value.Length > 0 && (value.Length == 1 || !Char.IsUpper(value[1]))) value = Char.ToLowerInvariant(value[0]) + value.Substring(1);

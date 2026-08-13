@@ -21,10 +21,11 @@ Like its biological namesake, a lichen exists through cooperation between differ
 - **The Grasshopper workflow stays yours:** Lichen communicates the selected context without giving an AI control of the canvas or scripting process. You decide whether and how to apply the response.
 - **Tool-agnostic context, not an AI chat:** Lichen does not connect to an AI provider and does not confine the handoff to one assistant or conversation.
 - **Inspectable before sharing:** exports are ordinary Markdown and JSON, so you remain in control of what leaves the definition.
-- **Local-first and read-only:** no account, API key, network connection, telemetry, definition mutation, or forced Grasshopper solution.
+- **Local-first and read-only export:** no account, API key, network connection, telemetry, or forced Grasshopper solution. Explicit Thallus creation/editing is an undoable local document action.
 - **Deterministic output:** the same captured graph state and options produce stable artifacts suitable for comparison and version control.
 - **Semantic rather than purely structural:** Lichen reports graph structure together with important settings, dependencies, scripts, clusters, boundaries, and cautious execution/workflow context.
 - **Persistent visual scope:** the Lichen Export Root marks a named upstream workflow. Selecting it highlights exactly the contributing chain without changing the definition. The explicit **Select chain** action selects that chain and its Lichen marker for normal Grasshopper move or group operations.
+- **Author-defined workflow scope:** a Thallus records exact group-like membership, nesting, description, and properties. One or more outermost Thalli can connect to `Lichen.T` without manually selecting their members.
 
 ## Export scopes
 
@@ -33,6 +34,8 @@ Like its biological namesake, a lichen exists through cooperation between differ
 - All upstream
 - Entire document
 - Persistent, nickname-labeled Lichen Export Roots
+
+- Exact, persistent Thallus workflow scopes
 
 ## Detail levels
 
@@ -46,7 +49,7 @@ Lichen can inspect unprotected clusters as bounded nested graphs. Password-prote
 
 ## Privacy and behavior
 
-Lichen runs locally. It does not serialize full geometry, access the network, call an AI model, modify definition content, alter wires, change component states, or force a solution. Capture, highlighting, and export never change selection; selection changes only after the user explicitly invokes **Select chain**. A 500-object limit keeps each scope bounded, and truncation is disclosed in the export and highlight.
+Lichen runs locally. It does not serialize full geometry, access the network, call an AI model, alter wires, change component states during export, or force a solution. Capture, highlighting, and export remain read-only. Selection changes only after the user explicitly invokes **Select chain**; **Create Thallus** and Thallus editing mutate only their requested Lichen document objects with Grasshopper undo records. A 500-object limit keeps each scope bounded; upstream roots disclose truncation, while oversized exact Thallus scopes abort rather than export partially.
 
 ## Version 0.8.1 highlights
 

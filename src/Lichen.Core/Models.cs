@@ -12,10 +12,10 @@ namespace Lichen.Core
     {
         public ContextDocument()
         {
-            SchemaVersion = "0.6"; Name = "Untitled"; RhinoVersion = ""; GrasshopperVersion = "";
+            SchemaVersion = "0.8"; Name = "Untitled"; RhinoVersion = ""; GrasshopperVersion = "";
             Scope = new ContextScope(); UserContext = new ContextUserContext(); Nodes = new List<ContextNode>();
             Edges = new List<ContextEdge>(); BoundaryInputs = new List<ContextBoundaryPort>();
-            BoundaryOutputs = new List<ContextBoundaryPort>(); Groups = new List<ContextGroup>();
+            BoundaryOutputs = new List<ContextBoundaryPort>(); Groups = new List<ContextGroup>(); Thalli = new List<ContextThallus>();
             Dependencies = new List<ContextDependency>(); Analysis = new ContextAnalysis(); ExtractionNotes = new List<string>();
         }
         [DataMember(Name="schemaVersion", Order=1)] public string SchemaVersion { get; set; }
@@ -29,10 +29,11 @@ namespace Lichen.Core
         [DataMember(Name="boundaryInputs", Order=9)] public List<ContextBoundaryPort> BoundaryInputs { get; set; }
         [DataMember(Name="boundaryOutputs", Order=10)] public List<ContextBoundaryPort> BoundaryOutputs { get; set; }
         [DataMember(Name="groups", Order=11)] public List<ContextGroup> Groups { get; set; }
-        [DataMember(Name="dependencies", Order=12)] public List<ContextDependency> Dependencies { get; set; }
-        [DataMember(Name="analysis", Order=13)] public ContextAnalysis Analysis { get; set; }
-        [DataMember(Name="extractionNotes", Order=14)] public List<string> ExtractionNotes { get; set; }
-        [DataMember(Name="exportSignature", Order=15, EmitDefaultValue=false)] public ContextExportSignature ExportSignature { get; set; }
+        [DataMember(Name="thalli", Order=12)] public List<ContextThallus> Thalli { get; set; }
+        [DataMember(Name="dependencies", Order=13)] public List<ContextDependency> Dependencies { get; set; }
+        [DataMember(Name="analysis", Order=14)] public ContextAnalysis Analysis { get; set; }
+        [DataMember(Name="extractionNotes", Order=15)] public List<string> ExtractionNotes { get; set; }
+        [DataMember(Name="exportSignature", Order=16, EmitDefaultValue=false)] public ContextExportSignature ExportSignature { get; set; }
     }
 
     [DataContract]
@@ -48,7 +49,7 @@ namespace Lichen.Core
     [DataContract]
     public sealed class ContextScope
     {
-        public ContextScope() { Mode = "selected_only"; SelectedObjectIds = new List<string>(); IncludedObjectIds = new List<string>(); MaximumNodes = 500; }
+        public ContextScope() { Mode = "selected_only"; SelectedObjectIds = new List<string>(); SelectedThallusIds = new List<string>(); IncludedObjectIds = new List<string>(); MaximumNodes = 500; }
         [DataMember(Name="mode", Order=1)] public string Mode { get; set; }
         [DataMember(Name="selectedObjectIds", Order=2)] public List<string> SelectedObjectIds { get; set; }
         [DataMember(Name="includedObjectIds", Order=3)] public List<string> IncludedObjectIds { get; set; }
@@ -56,6 +57,8 @@ namespace Lichen.Core
         [DataMember(Name="nodeLimitReached", Order=5)] public bool NodeLimitReached { get; set; }
         [DataMember(Name="rootLabel", Order=6, EmitDefaultValue=false)] public string RootLabel { get; set; }
         [DataMember(Name="rootSourceObjectIds", Order=7, EmitDefaultValue=false)] public List<string> RootSourceObjectIds { get; set; }
+        [DataMember(Name="rootThallusIds", Order=8, EmitDefaultValue=false)] public List<string> RootThallusIds { get; set; }
+        [DataMember(Name="selectedThallusIds", Order=9, EmitDefaultValue=false)] public List<string> SelectedThallusIds { get; set; }
     }
 
     [DataContract]
@@ -197,6 +200,34 @@ namespace Lichen.Core
     }
 
     [DataContract]
+    public sealed class ContextThallus
+    {
+        public ContextThallus()
+        {
+            InstanceId = ""; Name = "Thallus"; Description = ""; ParentThallusId = ""; EndpointObjectId = "";
+            Properties = new List<ContextMetadataEntry>(); DirectMemberIds = new List<string>();
+            EffectiveMemberIds = new List<string>(); MissingMemberIds = new List<string>();
+        }
+        [DataMember(Name="instanceId", Order=1)] public string InstanceId { get; set; }
+        [DataMember(Name="name", Order=2)] public string Name { get; set; }
+        [DataMember(Name="description", Order=3)] public string Description { get; set; }
+        [DataMember(Name="properties", Order=4)] public List<ContextMetadataEntry> Properties { get; set; }
+        [DataMember(Name="parentThallusId", Order=5, EmitDefaultValue=false)] public string ParentThallusId { get; set; }
+        [DataMember(Name="directMemberIds", Order=6)] public List<string> DirectMemberIds { get; set; }
+        [DataMember(Name="effectiveMemberIds", Order=7)] public List<string> EffectiveMemberIds { get; set; }
+        [DataMember(Name="missingMemberIds", Order=8)] public List<string> MissingMemberIds { get; set; }
+
+        // Host-only linkage used to resolve the subordinate Grasshopper endpoint. It is not serialized to Exact JSON.
+        public string EndpointObjectId { get; set; }
+    }
+
+    public interface ILichenThallusMetadata
+    {
+        string ThallusDescription { get; }
+        IList<ContextMetadataEntry> ThallusProperties { get; }
+    }
+
+    [DataContract]
     public sealed class ContextDependency
     {
         public ContextDependency() { Name = ""; Version = ""; Kind = "third_party"; }
@@ -306,24 +337,29 @@ namespace Lichen.Core
 
     public sealed class ContextSnapshot
     {
-        public ContextSnapshot() { Name = "Untitled"; RhinoVersion = ""; GrasshopperVersion = ""; Nodes = new List<ContextNode>(); Edges = new List<ContextEdge>(); SelectedObjectIds = new List<string>(); ExportRoots = new List<ExportRootDefinition>(); Groups = new List<ContextGroup>(); Notes = new List<string>(); }
+        public ContextSnapshot() { Name = "Untitled"; RhinoVersion = ""; GrasshopperVersion = ""; Nodes = new List<ContextNode>(); Edges = new List<ContextEdge>(); SelectedObjectIds = new List<string>(); SelectedThallusIds = new List<string>(); ExportRoots = new List<ExportRootDefinition>(); Groups = new List<ContextGroup>(); Thalli = new List<ContextThallus>(); Notes = new List<string>(); }
         public string Name { get; set; }
         public string RhinoVersion { get; set; }
         public string GrasshopperVersion { get; set; }
         public List<ContextNode> Nodes { get; set; }
         public List<ContextEdge> Edges { get; set; }
         public List<string> SelectedObjectIds { get; set; }
+        public List<string> SelectedThallusIds { get; set; }
         public List<ExportRootDefinition> ExportRoots { get; set; }
         public List<ContextGroup> Groups { get; set; }
+        public List<ContextThallus> Thalli { get; set; }
         public List<string> Notes { get; set; }
     }
 
     public sealed class ExportRootDefinition
     {
-        public ExportRootDefinition() { ObjectId = ""; Label = ""; SourceObjectIds = new List<string>(); }
+        public ExportRootDefinition() { ObjectId = ""; Label = ""; SourceObjectIds = new List<string>(); ThallusIds = new List<string>(); InvalidThallusSourceIds = new List<string>(); ThallusRouteError = ""; }
         public string ObjectId { get; set; }
         public string Label { get; set; }
         public List<string> SourceObjectIds { get; set; }
+        public List<string> ThallusIds { get; set; }
+        public List<string> InvalidThallusSourceIds { get; set; }
+        public string ThallusRouteError { get; set; }
     }
 
     public sealed class ExportRootClosure
@@ -333,6 +369,19 @@ namespace Lichen.Core
         public List<string> IncludedObjectIds { get; set; }
         public List<ContextEdge> ContributingEdges { get; set; }
         public bool NodeLimitReached { get; set; }
+    }
+
+    public sealed class ThallusClosure
+    {
+        public ThallusClosure()
+        {
+            RootThallusIds = new List<string>(); IncludedThallusIds = new List<string>(); IncludedObjectIds = new List<string>();
+            EffectiveMemberIds = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        }
+        public List<string> RootThallusIds { get; set; }
+        public List<string> IncludedThallusIds { get; set; }
+        public List<string> IncludedObjectIds { get; set; }
+        public Dictionary<string, List<string>> EffectiveMemberIds { get; set; }
     }
 
     public sealed class ContextExportPackage

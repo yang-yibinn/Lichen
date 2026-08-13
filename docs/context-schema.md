@@ -2,9 +2,11 @@
 
 Lichen Exact exports use a deterministic JSON document designed for coding agents, diffing, and future read-only integrations.
 
-## Version 0.6
+## Version 0.8
 
-Version 0.6 adds the top-level `exportSignature` and bounded `runtimeTreeShape` parameter field. Version 0.5 added optional Export Root metadata to `scope`: `rootLabel` and `rootSourceObjectIds`. Version 0.4 added the optional `clusterGraph` on cluster nodes. Readers written for earlier versions must treat 0.6 as a new schema version.
+Version 0.8 adds no field. It gives the existing `scope.rootThallusIds` array ordered meaning: for a T-root export, its entries preserve the flattened, validated Grasshopper runtime order of distinct opaque Thallus identities. That same order controls outer-region Markdown presentation. Readers written for 0.7 must treat 0.8 as a new schema version because sorting `rootThallusIds` would now discard author-visible meaning.
+
+Version 0.7 added author-defined `thalli`, `scope.rootThallusIds`, `scope.selectedThallusIds`, and the `thallus_root` scope mode. Version 0.6 added the top-level `exportSignature` and bounded `runtimeTreeShape` parameter field.
 
 The top-level fields are emitted in this order:
 
@@ -19,16 +21,17 @@ The top-level fields are emitted in this order:
 9. `boundaryInputs`
 10. `boundaryOutputs`
 11. `groups`
-12. `dependencies`
-13. `analysis`
-14. `extractionNotes`
-15. `exportSignature`
+12. `thalli`
+13. `dependencies`
+14. `analysis`
+15. `extractionNotes`
+16. `exportSignature`
 
 All property names use lower camel case. Identifiers use lowercase GUID strings when they originate in Grasshopper.
 
 ## Scope
 
-`scope.selectedObjectIds` records the original selection. `scope.includedObjectIds` records the final resolved scope after applying the selected expansion rule. `nodeLimitReached` explicitly reports a truncated traversal.
+`scope.selectedObjectIds` records originally selected exportable Grasshopper objects. `scope.selectedThallusIds` records any Thalli selected as top-menu export sources. `scope.includedObjectIds` records the final resolved scope after expanding selected Thalli to their exact effective members and applying the selected expansion rule. `nodeLimitReached` explicitly reports a truncated traversal.
 
 For `scope.mode: "export_root"`, the marker component is not present in `nodes`, `edges`, or boundaries. The optional root fields record:
 
@@ -36,6 +39,23 @@ For `scope.mode: "export_root"`, the marker component is not present in `nodes`,
 - `rootSourceObjectIds`: the distinct objects directly connected to X
 
 An Export Root scope contains the deterministic transitive upstream closure of X and only internal wires between included objects. It intentionally has no outgoing side-branch boundaries and does not serialize the terminal wire into the excluded marker. Selection-based modes retain their existing incoming and outgoing boundary behavior.
+
+For `scope.mode: "thallus_root"`, `rootThallusIds` records the connected outermost Thalli in validated T-token order. Grasshopper tree paths are flattened in their existing stable path/item order; every identity must appear exactly once. The included graph is still the exact set union of explicit effective membership, not geometric containment, upstream-wire inference, or inclusion of Merge/Jitter/Relay routing objects. Incoming and outgoing connections crossing that membership are retained as boundaries. A Thallus scope that exceeds the object limit is rejected rather than partially serialized.
+
+## Thalli
+
+Each top-level `thalli` record contains:
+
+- `instanceId` and author-visible `name`
+- optional author-provided `description` and ordered key/value `properties`
+- optional `parentThallusId` for an explicitly nested child
+- `directMemberIds` for members assigned directly to that Thallus
+- `effectiveMemberIds` for its deterministic direct-plus-descendant union
+- `missingMemberIds` for stale references that could not be captured
+
+Only outermost Thalli can be connected to `Lichen.T`. Their T port is presented directly on the Thallus boundary; the subordinate Grasshopper source object required to carry the wire is an invisible implementation detail. Nested Thalli contribute through their parent and do not expose an independent output, but a nested Thallus selected directly for a top-menu export can serve as that selection scope. Peer Thalli may overlap; shared nodes are serialized once, disclosed as shared membership in Markdown, and are not forced into an artificial parent relationship. User descriptions and properties remain explicitly labeled as user-provided. Only the allow-listed keys `purpose`, `role`, `stage`, and `discipline` contribute bounded context to cautious purpose inference.
+
+The endpoint emits an opaque non-string runtime identity. `Lichen.T` accepts direct endpoints or identities carried through the exact native variable-input Merge, Jitter's `List`-to-`Values` path, and native Relay. Validation requires the token sequence and complete live port-aware route to agree. Generic values or strings, Jitter `Indices`, unsupported intermediaries, duplicate or missing identities, deleted/stale/mismatched ownership, nested owners, and cycles are rejected. These runtime routing objects are not serialized as Thallus members.
 
 ## Nodes and parameters
 
@@ -116,7 +136,8 @@ Script behavior descriptions and possible roles are deterministic Markdown prese
 
 ## Determinism
 
-- Nodes, edges, groups, dependencies, messages, and identifiers are stably ordered.
+- Nodes, edges, groups, Thalli, dependencies, messages, and identifiers are stably ordered.
+- T-root IDs preserve the stable flattened order of the validated already-computed token stream; they are not re-sorted by ID.
 - No timestamps or export-session identifiers are included.
 - The provenance seal likewise contains no user, machine, file-path, timestamp, or session data.
 - Re-exporting an unchanged graph with unchanged options produces identical JSON.

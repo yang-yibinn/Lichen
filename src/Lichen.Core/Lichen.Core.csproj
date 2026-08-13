@@ -3,6 +3,6 @@
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "><OutputPath>bin\Debug\</OutputPath><DebugSymbols>true</DebugSymbols><DebugType>full</DebugType><Optimize>false</Optimize></PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "><OutputPath>bin\Release\</OutputPath><DebugType>pdbonly</DebugType><Optimize>true</Optimize></PropertyGroup>
   <ItemGroup><Reference Include="System"/><Reference Include="System.Core"/><Reference Include="System.Runtime.Serialization"/><Reference Include="System.Xml"/></ItemGroup>
-  <ItemGroup><Compile Include="Models.cs"/><Compile Include="ExportRootTraversal.cs"/><Compile Include="GraphAlgorithms.cs"/><Compile Include="ExecutionSemanticsAnalyzer.cs"/><Compile Include="Exporters.cs"/><Compile Include="SafeScriptSourceReader.cs"/><Compile Include="ScriptBehaviorAnalyzer.cs"/><Compile Include="Properties\AssemblyInfo.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Models.cs"/><Compile Include="ExportRootTraversal.cs"/><Compile Include="ThallusTraversal.cs"/><Compile Include="ThallusIdentityRouting.cs"/><Compile Include="GraphAlgorithms.cs"/><Compile Include="ExecutionSemanticsAnalyzer.cs"/><Compile Include="ThallusPresentation.cs"/><Compile Include="Exporters.cs"/><Compile Include="SafeScriptSourceReader.cs"/><Compile Include="ScriptBehaviorAnalyzer.cs"/><Compile Include="Properties\AssemblyInfo.cs"/></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

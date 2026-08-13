@@ -100,6 +100,15 @@ namespace Lichen.Core
                 result.PossibleRole = "assemble or reorganize Grasshopper data trees";
                 AddEvidence(result, "DataTree<T>", "GH_Path");
             }
+            else if (language.IndexOf("python", StringComparison.Ordinal) >= 0
+                && HasAll(lower, "def bayer_matrix", "math.floor", "idx.append", "frac > thresh", "rnd.random")
+                && ContainsAny(lower, "def value_noise", "def fbm"))
+            {
+                result.Observations.Add("Constructs ordered Bayer thresholds together with noise-based and random threshold modes.");
+                result.Observations.Add("Quantizes bounded numeric values into discrete indices by comparing each fractional level with the selected threshold.");
+                result.PossibleRole = "apply configurable dithering while quantizing values into discrete indices";
+                AddEvidence(result, "bayer_matrix", "math.floor", "frac > thresh", "Idx.append");
+            }
 
             result.DetectedCalls.AddRange(DetectCalls(source).Where(c => !result.Evidence.Contains(c, StringComparer.OrdinalIgnoreCase)).Take(8));
             return result;
