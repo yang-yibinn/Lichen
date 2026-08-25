@@ -1,4 +1,4 @@
-# Lichen 0.8.1
+# Lichen 0.8.2
 
 **Lichen creates a shared language between Grasshopper definitions and coding agents.**
 
@@ -51,13 +51,13 @@ Lichen can inspect unprotected clusters as bounded nested graphs. Password-prote
 
 Lichen runs locally. It does not serialize full geometry, access the network, call an AI model, alter wires, change component states during export, or force a solution. Capture, highlighting, and export remain read-only. Selection changes only after the user explicitly invokes **Select chain**; **Create Thallus** and Thallus editing mutate only their requested Lichen document objects with Grasshopper undo records. A 500-object limit keeps each scope bounded; upstream roots disclose truncation, while oversized exact Thallus scopes abort rather than export partially.
 
-## Version 0.8.1 highlights
+## Version 0.8.2 highlights
 
-- **Select chain** from the Lichen component menu or its Grasshopper middle-click radial companion
-- Schema 0.6 provenance seals for deterministic Markdown and Exact JSON verification
-- Bounded data-tree shape reporting focused on meaningful origins, operations, and topology changes
-- Broader workflow-purpose synthesis using graph stages, scripts, clusters, and iterative regions
-- Clearer Export Root results, numeric controls, colliding labels, and exact character and UTF-8 byte sizes
+- Exact persistent **Thallus** workflow scopes with explicit membership, nesting, descriptions, and properties
+- Outermost T outputs with validated direct, Relay, Merge, and Jitter Values routing
+- Deterministic routed-identity order and region-aware Technical presentation
+- Connected functional evidence and per-Thallus semantic summaries
+- Improved Technical evidence localization, stable ambiguous-value and boundary IDs, and same-label fan-out preservation
 
 ## Package Manager installation
 

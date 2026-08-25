@@ -1,8 +1,8 @@
 param([switch]$SkipTests)
 
 $ErrorActionPreference = 'Stop'
-$releaseLabel = '0.8.1'
-$releaseVersion = '0.8.1.0'
+$releaseLabel = '0.8.2'
+$releaseVersion = '0.8.2.0'
 $workspace = Split-Path -Parent $MyInvocation.MyCommand.Path
 $compiler = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $rhino = 'C:\Program Files\Rhino 8\System\RhinoCommon.dll'

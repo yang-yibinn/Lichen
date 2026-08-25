@@ -319,7 +319,7 @@ namespace Lichen.Core
 
     public sealed class ContextExportOptions
     {
-        public ContextExportOptions() { ScopeMode = ScopeMode.SelectedOnly; DetailLevel = DetailLevel.Technical; MaximumNodes = 500; IncludeScriptSource = true; IncludeRuntimeSummary = true; RootObjectId = ""; RootLabel = ""; ExporterVersion = "0.8.1"; ClusterPurposeNotes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); }
+        public ContextExportOptions() { ScopeMode = ScopeMode.SelectedOnly; DetailLevel = DetailLevel.Technical; MaximumNodes = 500; IncludeScriptSource = true; IncludeRuntimeSummary = true; RootObjectId = ""; RootLabel = ""; ExporterVersion = "0.8.2"; ClusterPurposeNotes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); }
         public ScopeMode ScopeMode { get; set; }
         public DetailLevel DetailLevel { get; set; }
         public int MaximumNodes { get; set; }

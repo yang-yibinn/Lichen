@@ -8,7 +8,7 @@ namespace Lichen.Plugin
 {
     public sealed class LichenInfo : GH_AssemblyInfo
     {
-        internal const string CurrentVersion = "0.8.1";
+        internal const string CurrentVersion = "0.8.2";
         private const string IconResourceName = "Lichen.Plugin.Assets.lichen-icon-24.png";
         private const string SelectChainIconResourceName = "Lichen.Plugin.Assets.lichen-select-chain.svg";
         private const string CreateThallusIconResourceName = "Lichen.Plugin.Assets.lichen-create-thallus.svg";
