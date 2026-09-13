@@ -6,6 +6,8 @@ Lichen is designed to fit into the Grasshopper workflow you already know. You co
 
 Developed by Yibin Yang at Adrian Smith + Gordon Gill Architecture (AS+GG).
 
+![How Lichen supports your Grasshopper workflow](assets/branding/lichen-workflow.png)
+
 ## Lichen in Grasshopper
 
 ![Animated Lichen Export Root workflow in Grasshopper](docs/images/lichen-export-root.gif)
