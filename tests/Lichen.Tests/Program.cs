@@ -1,20 +1,23 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using Lichen.Core;
 
 namespace Lichen.Tests
 {
-    internal static class Program
+    internal static partial class Program
     {
         private static int passed;
         private static int failed;
 
         private static int Main()
         {
+            Run("public release exports schema 0.8 without curve tools", PublicReleaseContract);
             Run("selected-only scope and boundaries", SelectedOnly);
             Run("immediate upstream expansion", ImmediateUpstream);
             Run("recursive upstream expansion", RecursiveUpstream);
@@ -36,6 +39,9 @@ namespace Lichen.Tests
             Run("boundaries use readable names", ReadableBoundaries);
             Run("identical boundary labels are disambiguated", BoundaryLabelCollision);
             Run("workflow refinement filters passive objects", WorkflowRefinement);
+            Run("Graph Mapper authored state is deterministic and inspectable", GraphMapperAuthoredState);
+            Run("Graph Mapper authored state is bounded and failures are explicit", GraphMapperStateBoundaries);
+            Run("Graph Mapper and Cull Pattern narration requires connected evidence", GraphMapperCullNarrationRequiresPath);
             Run("whole-workflow purpose relates graph and script evidence", WholeWorkflowPurposeSynthesis);
             Run("curve-guided sweep workflows receive graph-wide purpose", CurveGuidedSweepPurpose);
             Run("curve-network fillet workflows receive graph-wide purpose", CurveNetworkFilletPurpose);
@@ -57,6 +63,8 @@ namespace Lichen.Tests
             Run("Technical topology focuses on tree transitions", TechnicalTopologyTransitions);
             Run("repeated descriptions are normalized", DescriptionNormalization);
             Run("dependencies distinguish native and third-party", DependencyClassification);
+            RunDependencySpotlightTests();
+            RunRadialMenuLayoutTests();
             Run("author signals are not duplicated", AuthorSignals);
             Run("numeric Panels are values rather than author signals", NumericPanelClassification);
             Run("Technical presentation removes placeholder and duplicate facts", TechnicalPresentationPolish);
@@ -94,6 +102,8 @@ namespace Lichen.Tests
             Run("large workflow summaries condense duplicate operations", WorkflowCondensation);
             Run("numeric and normalization expressions are described", ExpandedExpressionBehavior);
             Run("optimization objectives name linked components and fitness construction", OptimizationObjectiveDescription);
+            Run("Galapagos summaries separate captured genomes from unresolved references", OptimizationUnresolvedGenomeReferences);
+            Run("export metadata drafts persist per local context", ExportContextDraftPersistence);
             Run("export root resolves a simple linear chain", ExportRootLinearChain);
             Run("export root combines multiple X sources", ExportRootMultipleSources);
             Run("export root excludes downstream side branches", ExportRootExcludesSideBranch);
@@ -125,6 +135,8 @@ namespace Lichen.Tests
             Run("Thallus exports remain stable across capture ordering", ThallusStableOrdering);
             Run("cyclic Thallus parent declarations are rejected", ThallusRejectsCyclicParentDeclarations);
             Run("Thallus scope aborts instead of truncating", ThallusLimitAborts);
+            Run("Thallus endpoint cannot anchor visible group bounds", ThallusEndpointDoesNotAnchorGroupBounds);
+            Run("Thallus output rail clears compact member bounds", ThallusOutputRailClearsCompactMembers);
             Console.WriteLine("Passed: " + passed + "; Failed: " + failed);
             return failed == 0 ? 0 : 1;
         }
@@ -962,6 +974,107 @@ namespace Lichen.Tests
             s.Edges.Add(Edge("N4", "N12"));
             ContextDocument d = new ContextGraphService().BuildDocument(s, Options(ScopeMode.EntireDocument));
             Equal(5, d.Analysis.DetectedOperations.Count); True(!d.Analysis.DetectedOperations.Any(o => o.StartsWith("Number Slider")), "passive slider became a workflow step"); True(d.Analysis.InferredPurpose.Contains("image-derived values"), "recognized purpose missing");
+            True(d.Analysis.DetectedOperations.Any(o => o.Contains("converted into a panel-culling pattern")), "connected image-to-cull narration was not retained");
+        }
+
+        private static void GraphMapperAuthoredState()
+        {
+            GraphMapperStateCapture capture = new GraphMapperStateCapture
+            {
+                CaptureStatus = "captured", GraphType = "Sine wave distribution", GraphTypeId = "A1B2C3D4-E5F6-47A8-90B1-C2D3E4F50607",
+                GraphValid = true, LockGrips = false, InputDomainStart = -2.5, InputDomainEnd = 7.25,
+                OutputDomainStart = 0.125, OutputDomainEnd = 0.875, TotalGripCount = 2, TotalSampleCount = 3,
+                Grips = new List<GraphMapperGripState>
+                {
+                    new GraphMapperGripState { Index = 1, X = 0.75, Y = 0.625, Constraint = "Vertical" },
+                    new GraphMapperGripState { Index = 0, X = 0.25, Y = 0.375, Constraint = "None" }
+                },
+                Samples = new List<GraphMapperSampleState>
+                {
+                    new GraphMapperSampleState { NormalizedInput = 1, NormalizedOutput = 0, MappedInput = 7.25, MappedOutput = 0.125 },
+                    new GraphMapperSampleState { NormalizedInput = 0, NormalizedOutput = 0, MappedInput = -2.5, MappedOutput = 0.125 },
+                    new GraphMapperSampleState { NormalizedInput = 0.5, NormalizedOutput = 1, MappedInput = 2.375, MappedOutput = 0.875 }
+                }
+            };
+
+            CultureInfo originalCulture = Thread.CurrentThread.CurrentCulture; CultureInfo originalUi = Thread.CurrentThread.CurrentUICulture;
+            List<ContextMetadataEntry> french;
+            try
+            {
+                Thread.CurrentThread.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR"); Thread.CurrentThread.CurrentUICulture = CultureInfo.GetCultureInfo("fr-FR");
+                french = GraphMapperStateProjection.Metadata(capture);
+                Thread.CurrentThread.CurrentCulture = CultureInfo.GetCultureInfo("en-US"); Thread.CurrentThread.CurrentUICulture = CultureInfo.GetCultureInfo("en-US");
+                List<ContextMetadataEntry> english = GraphMapperStateProjection.Metadata(capture);
+                Sequence(english.Select(value => value.Key + "=" + value.Value), french.Select(value => value.Key + "=" + value.Value));
+                Equal("sine wave distribution", english.Single(value => value.Key == "graphMapper.graphType").Value.ToLowerInvariant());
+                Equal("a1b2c3d4-e5f6-47a8-90b1-c2d3e4f50607", english.Single(value => value.Key == "graphMapper.graphTypeId").Value);
+                Equal("[-2.5, 7.25]", english.Single(value => value.Key == "graphMapper.inputDomain").Value);
+                True(english.Single(value => value.Key == "graphMapper.grip.000").Value.StartsWith("index=0; x=0.25; y=0.375"), "grips were not ordered deterministically");
+                True(english.Single(value => value.Key == "graphMapper.sample.000").Value.Contains("normalizedInput=0;"), "samples were not ordered deterministically");
+            }
+            finally { Thread.CurrentThread.CurrentCulture = originalCulture; Thread.CurrentThread.CurrentUICulture = originalUi; }
+
+            Equal(1, capture.Grips[0].Index); Equal(1.0, capture.Samples[0].NormalizedInput);
+            ContextNode mapper = SemanticNode("mapper-12345678", "Graph Mapper", "Grasshopper");
+            mapper.RuntimeTypeName = "Grasshopper.Kernel.Special.GH_GraphMapper";
+            mapper.ExecutionMetadata = GraphMapperStateProjection.Metadata(capture);
+            mapper.PersistentValueSummary = GraphMapperStateProjection.ReadableSummary(capture);
+            ContextSnapshot snapshot = new ContextSnapshot(); snapshot.Nodes.Add(mapper);
+            ContextExportPackage package = new ContextExporter().Export(snapshot, Options(ScopeMode.EntireDocument));
+            True(package.Markdown.Contains("authored graph state: type=Sine wave distribution"), "authored Graph Mapper state was absent from readable output");
+            True(package.Json.Contains("graphMapper.graphType") && package.Json.Contains("graphMapper.grip.001") && package.Json.Contains("graphMapper.sample.002"), "structured authored Graph Mapper state was absent from Exact JSON");
+            True(!package.Document.Analysis.Uncertainties.Any(value => value.Contains("Graph Mapper")), "complete valid authored state was incorrectly uncertain");
+        }
+
+        private static void GraphMapperStateBoundaries()
+        {
+            GraphMapperStateCapture capture = new GraphMapperStateCapture
+            {
+                CaptureStatus = "partial", CaptureNote = "Bounded fixture.", GraphType = "Bezier", GraphTypeId = "type-id",
+                GraphValid = true, InputDomainStart = 0, InputDomainEnd = 1, OutputDomainStart = 0, OutputDomainEnd = 1,
+                TotalGripCount = 70, TotalSampleCount = 40
+            };
+            for (int i = 0; i < 70; i++) capture.Grips.Add(new GraphMapperGripState { Index = i, X = i / 100.0, Y = i / 200.0, Constraint = "None" });
+            for (int i = 0; i < 40; i++) capture.Samples.Add(new GraphMapperSampleState { NormalizedInput = i / 39.0, NormalizedOutput = 0.5, MappedInput = i / 39.0, MappedOutput = 0.5 });
+            List<ContextMetadataEntry> metadata = GraphMapperStateProjection.Metadata(capture);
+            Equal(64, metadata.Count(value => value.Key.StartsWith("graphMapper.grip.")));
+            Equal(33, metadata.Count(value => value.Key.StartsWith("graphMapper.sample.")));
+            Equal("6", metadata.Single(value => value.Key == "graphMapper.omittedGripCount").Value);
+            Equal("7", metadata.Single(value => value.Key == "graphMapper.omittedSampleCount").Value);
+
+            ContextNode partialMapper = SemanticNode("partial-12345678", "Graph Mapper", "Grasshopper");
+            partialMapper.RuntimeTypeName = "Grasshopper.Kernel.Special.GH_GraphMapper"; partialMapper.ExecutionMetadata = metadata;
+            ContextSnapshot partialSnapshot = new ContextSnapshot(); partialSnapshot.Nodes.Add(partialMapper);
+            ContextDocument partialDocument = new ContextGraphService().BuildDocument(partialSnapshot, Options(ScopeMode.EntireDocument));
+            True(partialDocument.Analysis.Uncertainties.Any(value => value.Contains("authored function state is partial")), "partial bounded Graph Mapper state was not disclosed");
+
+            ContextNode mapper = SemanticNode("opaque-12345678", "Graph Mapper", "Grasshopper");
+            mapper.RuntimeTypeName = "Grasshopper.Kernel.Special.GH_GraphMapper";
+            ContextSnapshot snapshot = new ContextSnapshot(); snapshot.Nodes.Add(mapper);
+            ContextExportPackage package = new ContextExporter().Export(snapshot, Options(ScopeMode.EntireDocument));
+            True(package.Document.Analysis.Uncertainties.Any(value => value.Contains("authored function state is not captured")), "missing Graph Mapper state was not disclosed");
+            True(!SectionText(package.Markdown, "Uncertainties and Extraction Notes", "Component Inventory").Contains("None recorded."), "readable export denied a known Graph Mapper gap");
+
+            GraphMapperStateCapture unavailable = GraphMapperStateProjection.Unavailable("Public authored state was unavailable.\r\nNo values were fabricated.");
+            List<ContextMetadataEntry> unavailableMetadata = GraphMapperStateProjection.Metadata(unavailable);
+            Equal(2, unavailableMetadata.Count); Equal("unavailable", unavailableMetadata[0].Value);
+            Equal("Public authored state was unavailable. No values were fabricated.", unavailableMetadata[1].Value);
+
+            GraphMapperStateCapture nonFinite = new GraphMapperStateCapture { CaptureStatus = "captured", InputDomainStart = Double.NaN };
+            List<ContextMetadataEntry> nonFiniteMetadata = GraphMapperStateProjection.Metadata(nonFinite);
+            Equal("unavailable", nonFiniteMetadata[0].Value); True(nonFiniteMetadata[1].Value.Contains("non-finite"), "non-finite domains were not refused explicitly");
+        }
+
+        private static void GraphMapperCullNarrationRequiresPath()
+        {
+            ContextSnapshot snapshot = new ContextSnapshot();
+            string[] names = { "Remap Numbers", "Graph Mapper", "Amplitude", "Move", "Cull Pattern" };
+            for (int i = 0; i < names.Length; i++) snapshot.Nodes.Add(SemanticNode("D" + i, names[i], "Grasshopper"));
+            snapshot.Edges.Add(Edge("D0", "D1")); snapshot.Edges.Add(Edge("D1", "D2")); snapshot.Edges.Add(Edge("D2", "D3"));
+            ContextDocument document = new ContextGraphService().BuildDocument(snapshot, Options(ScopeMode.EntireDocument));
+            True(!document.Analysis.DetectedOperations.Any(value => value.Contains("converted into a panel-culling pattern")), "disconnected Graph Mapper and Cull Pattern chains were joined in narration");
+            True(document.Analysis.DetectedOperations.Any(value => value.StartsWith("Graph Mapper")), "independent Graph Mapper operation disappeared");
+            True(document.Analysis.DetectedOperations.Any(value => value.StartsWith("Cull Pattern")), "independent Cull Pattern operation disappeared");
         }
 
         private static void WholeWorkflowPurposeSynthesis()
@@ -2168,6 +2281,96 @@ namespace Lichen.Tests
             True(d.Analysis.InferredPurpose.Contains("solver-controlled optimization"), "optimization did not inform cautious purpose inference");
         }
 
+        private static void ThallusEndpointDoesNotAnchorGroupBounds()
+        {
+            ThallusEndpointBounds initial = ThallusEndpointLayout.ExcludedGroupBounds(134.0, 40.0);
+            Equal(134.0, initial.X); Equal(40.0, initial.Y); Equal(0.0, initial.Width); Equal(0.0, initial.Height);
+
+            ThallusEndpointBounds moved = ThallusEndpointLayout.ExcludedGroupBounds(334.0, 140.0);
+            Equal(334.0, moved.X); Equal(140.0, moved.Y); Equal(0.0, moved.Width); Equal(0.0, moved.Height);
+            True(initial.Width <= 0.0 && initial.Height <= 0.0 && moved.Width <= 0.0 && moved.Height <= 0.0,
+                "the invisible endpoint contributed non-empty bounds after movement");
+        }
+
+        private static void ThallusOutputRailClearsCompactMembers()
+        {
+            ThallusEndpointBounds group = new ThallusEndpointBounds { X = 80.0, Y = 135.0, Width = 304.0, Height = 174.0 };
+            ThallusEndpointPortBounds port = ThallusEndpointLayout.OutsideRightPort(group, 18.0, 20.0, 7.0, 20.0, 3.0);
+
+            Equal(412.0, port.SocketX);
+            Equal(222.0, port.SocketY);
+            Equal(387.0, port.LabelBounds.X);
+            Equal(212.0, port.LabelBounds.Y);
+            Equal(18.0, port.LabelBounds.Width);
+            Equal(20.0, port.LabelBounds.Height);
+            Equal(402.0, port.HitBounds.X);
+            Equal(212.0, port.HitBounds.Y);
+            True(port.LabelBounds.X > group.X + group.Width,
+                "the T label still occupied the owning group's member area");
+            True(port.SocketX > port.LabelBounds.X + port.LabelBounds.Width,
+                "the output socket did not clear the external T label");
+        }
+
+        private static void OptimizationUnresolvedGenomeReferences()
+        {
+            ContextSnapshot snapshot = new ContextSnapshot();
+            snapshot.Nodes.Add(ExecutionNode("S1", "Number Slider", "Grasshopper.Kernel.Special.GH_NumberSlider"));
+            snapshot.Nodes.Add(ExecutionNode("S2", "Number Slider", "Grasshopper.Kernel.Special.GH_NumberSlider"));
+            ContextNode galapagos = ExecutionNode("G", "Galapagos", "GalapagosComponents.GalapagosObject");
+            galapagos.ControlLinks = new List<ContextControlLink>
+            {
+                new ContextControlLink { Role = "genome", TargetNodeId = "S1" },
+                new ContextControlLink { Role = "genome", TargetNodeId = "missing-a" },
+                new ContextControlLink { Role = "genome", TargetNodeId = "S2" },
+                new ContextControlLink { Role = "genome", TargetNodeId = "missing-b" }
+            };
+            snapshot.Nodes.Add(galapagos);
+
+            ContextExportPackage package = new ContextExporter().Export(snapshot, Options(ScopeMode.EntireDocument));
+            ContextExecutionComponent component = package.Document.Analysis.ExecutionSemantics.Components.Single(c => c.NodeId == "G");
+            True(component.Behavior.Contains("2 captured linked genomes (Number Slider (2 components))"), "captured genomes were not counted separately");
+            True(component.Behavior.Contains("2 unresolved or out-of-scope genome references (missing-a, missing-b)"), "unresolved genome references were not disclosed");
+            True(component.Behavior.Contains("not counted as captured linked genomes"), "the evidence boundary was not explained");
+            True(!component.Behavior.Contains("4 linked genomes"), "unresolved references were still presented as linked genomes");
+            True(component.Evidence.Contains("genome reference to unresolved or out-of-scope missing-a"), "unresolved evidence was presented as a live link");
+            Equal(4, package.Document.Nodes.Single(n => n.InstanceId == "G").ControlLinks.Count);
+            True(package.Json.Contains("\"targetNodeId\": \"missing-a\"") && package.Json.Contains("\"targetNodeId\": \"missing-b\""), "Exact JSON did not preserve the raw Galapagos references");
+        }
+
+        private static void ExportContextDraftPersistence()
+        {
+            MemoryDraftSettings settings = new MemoryDraftSettings();
+            ExportContextDraftStore store = new ExportContextDraftStore(settings);
+            ExportContextDraft draft = new ExportContextDraft { Purpose = "Shape study", RequestedTask = "Review\r\nthe controls", Constraints = "Do not solve" };
+            True(store.Save("root_a", draft), "the initial draft was not stored");
+            Equal(1, settings.PersistentWrites);
+
+            ExportContextDraft restored = store.Load("root_a");
+            Equal("Shape study", restored.Purpose);
+            Equal("Review\r\nthe controls", restored.RequestedTask);
+            Equal("Do not solve", restored.Constraints);
+            True(!store.Save("root_a", draft), "an unchanged draft was written again");
+            Equal(1, settings.PersistentWrites);
+
+            ExportContextDraft other = store.Load("root_b");
+            Equal("", other.Purpose); Equal("", other.RequestedTask); Equal("", other.Constraints);
+            True(store.Save("root_a", new ExportContextDraft()), "cleared fields were not persisted");
+            Equal(2, settings.PersistentWrites);
+            restored = store.Load("root_a");
+            Equal("", restored.Purpose); Equal("", restored.RequestedTask); Equal("", restored.Constraints);
+        }
+
+        private static void PublicReleaseContract()
+        {
+            ContextExportOptions options = Options(ScopeMode.EntireDocument);
+            Equal("0.8.3", options.ExporterVersion);
+            ContextExportPackage package = new ContextExporter().Export(Fixture(), options);
+            Equal("0.8", package.Document.SchemaVersion);
+            True(!package.Json.Contains("curveDescriptors"), "Public export contains a curve payload.");
+            True(typeof(ContextExportOptions).GetProperty("IncludeCurveDescriptors") == null, "Public curve option remains.");
+            True(!typeof(ContextDocument).Assembly.GetTypes().Any(type => type.Name.Contains("CurveDescriptor") || type.Name.StartsWith("CurveEdit")), "Public Core contains curve tools.");
+        }
+
         private static ContextNode ControlNode(string id, string name, bool start)
         {
             ContextNode node = ExecutionNode(id, name, "Plugin." + name.Replace(" ", ""));
@@ -2293,6 +2496,15 @@ namespace Lichen.Tests
         private sealed class ThrowingScriptFixture
         {
             public string Code { get { throw new InvalidOperationException("fixture getter failed"); } }
+        }
+
+        private sealed class MemoryDraftSettings : IExportContextDraftSettings
+        {
+            private readonly Dictionary<string, string> values = new Dictionary<string, string>(StringComparer.Ordinal);
+            public int PersistentWrites { get; private set; }
+            public string GetValue(string key, string fallback) { string value; return values.TryGetValue(key, out value) ? value : fallback; }
+            public void SetValue(string key, string value) { values[key] = value; }
+            public void WritePersistentSettings() { PersistentWrites++; }
         }
     }
 }

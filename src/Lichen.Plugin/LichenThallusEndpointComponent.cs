@@ -15,6 +15,7 @@ namespace Lichen.Plugin
 
         public override Guid ComponentGuid { get { return LichenComponentIds.ThallusEndpoint; } }
         public override GH_Exposure Exposure { get { return GH_Exposure.hidden; } }
+        public override TimeSpan ProcessorTime { get { return TimeSpan.Zero; } }
         protected override Bitmap Icon { get { return LichenInfo.CreateThallusIcon(24); } }
 
         public override void CreateAttributes()

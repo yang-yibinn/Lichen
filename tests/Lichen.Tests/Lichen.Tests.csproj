@@ -4,6 +4,7 @@
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "><OutputPath>bin\Release\</OutputPath><DebugType>pdbonly</DebugType><Optimize>true</Optimize></PropertyGroup>
   <ItemGroup><Reference Include="System"/><Reference Include="System.Core"/><Reference Include="System.Runtime.Serialization"/><Reference Include="System.Xml"/></ItemGroup>
   <ItemGroup><ProjectReference Include="..\..\src\Lichen.Core\Lichen.Core.csproj"><Project>{485CD65C-9966-4C71-BC7B-A7C51E2B8C2E}</Project><Name>Lichen.Core</Name></ProjectReference></ItemGroup>
-  <ItemGroup><Compile Include="Program.cs"/><Compile Include="Properties\AssemblyInfo.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Program.cs"/><Compile Include="DependencySpotlightTests.cs"/><Compile Include="Properties\AssemblyInfo.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="RadialMenuLayoutTests.cs"/></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

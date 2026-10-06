@@ -18,14 +18,12 @@ Developed by Yibin Yang at Adrian Smith + Gordon Gill Architecture (AS+GG).
 
 ## Requirements
 
-- Rhino 8.30 or later for Windows
+- Rhino 8 for Windows; built against SDK 8.0.23304.9001. Earlier/later service-release and runtime-mode host validation remains incomplete; the previous public target was 8.30+.
 - Grasshopper 1
 
 ## Installation
 
-1. In Rhino, run `PackageManager`.
-2. Search for **LichenGH** and select **Install**. The installed Grasshopper plugin and component are named **Lichen**.
-3. Restart Rhino if prompted, then open Grasshopper.
+Download **Lichen-0.8.3.zip** and its checksum from [GitHub Releases](https://github.com/yang-yibinn/Lichen/releases/tag/v0.8.3), then follow [manual installation](docs/installation.md). This release has not been uploaded to the Rhino Package Manager service. Existing Package Manager distributions may be older.
 
 ## Use
 
@@ -37,6 +35,18 @@ For a persistent scope, place the **Lichen** component at the end of a workflow.
 
 Lichen supports selected-only, immediate-upstream, all-upstream, entire-document, and persistent Export Root scopes. Brief, Technical, and Exact detail levels range from a concise workflow handoff to a complete JSON-backed graph representation. Technical output disambiguates colliding cluster and port labels and reports bounded, already-computed data-tree paths when they carry useful topology. Every export includes a deterministic Lichen provenance seal, and the dialog reports exact Markdown and JSON character and UTF-8 byte sizes. The Exact JSON contract is documented in [`docs/context-schema.md`](docs/context-schema.md).
 
+## New in 0.8.3
+
+- **Spotlight** for temporary third-party and script highlights with layer/focus controls
+- Improved radial placement and Thallus layout, profiler, and delete/undo cache handling
+- Authored Graph Mapper state and corrected Galapagos genome-reference reporting
+- Locally saved export metadata drafts and distinct copy/save icons
+- Pinned Rhino 8.0 SDK; main export remains schema 0.8 without experimental curve tools
+
+Toggle **Spotlight** from the lower-left radial icon or empty-canvas right-click menu. Its upper-right legend offers Settings, collapse, and close. Counts and highlights cover at most 500 eligible top-level objects; partial coverage is disclosed. No Spotlight state is saved in the definition.
+
+See [release notes and validation limits](docs/release-notes-0.8.3.md). Curve Descriptor, Descriptor to Curve, Apply Curve Edit, and curve-snapshot inclusion are not part of this release.
+
 ## Privacy and behavior
 
 Lichen runs locally. It does not serialize full geometry, access the network, call an AI model, send telemetry, alter wires or component states during export, or force a Grasshopper solution. Capture, highlighting, and export remain read-only. The explicitly invoked **Select chain** command changes selection only; the explicitly invoked **Create Thallus** and Thallus editing commands add or edit their scoped Lichen document objects with Grasshopper undo records. Password-protected clusters remain opaque, and safely accessible C# and Python source is read without executing or compiling it.
@@ -45,7 +55,8 @@ Lichen runs locally. It does not serialize full geometry, access the network, ca
 
 Requirements:
 
-- Windows with Rhino 8.30 or later installed in the standard location
+- Windows with Rhino 8 installed in the standard location (for Yak packaging)
+- The build restores hash-verified official SDK 8.0.23304.9001 references when missing; cached builds work offline.
 - .NET Framework 4.8 runtime/build tools
 
 From PowerShell in the repository root:
@@ -60,7 +71,9 @@ The public source tree contains:
 
 ```text
 src/                 Plugin, core graph model, and Grasshopper adapters
-tests/Lichen.Tests/  Deterministic host-free test runner
+tests/               Core tests, Thallus lifecycle doubles, and standalone Spotlight menu checks
+build/               Pinned Rhino SDK configuration
+tools/               SDK restore helper
 packaging/yak/       Rhino Package Manager metadata
 docs/                Installation and Exact JSON schema documentation
 ```

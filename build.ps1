@@ -1,13 +1,14 @@
 param([switch]$SkipTests)
 
 $ErrorActionPreference = 'Stop'
-$releaseLabel = '0.8.2'
-$releaseVersion = '0.8.2.0'
+$releaseLabel = '0.8.3'
+$releaseVersion = '0.8.3.0'
 $workspace = Split-Path -Parent $MyInvocation.MyCommand.Path
 $compiler = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-$rhino = 'C:\Program Files\Rhino 8\System\RhinoCommon.dll'
-$grasshopper = 'C:\Program Files\Rhino 8\Plug-ins\Grasshopper\Grasshopper.dll'
-$ghio = 'C:\Program Files\Rhino 8\Plug-ins\Grasshopper\GH_IO.dll'
+$sdk = & (Join-Path $workspace 'tools\Restore-RhinoSdk.ps1')
+$rhino = $sdk.RhinoCommon
+$grasshopper = $sdk.Grasshopper
+$ghio = $sdk.GhIo
 $yak = 'C:\Program Files\Rhino 8\System\Yak.exe'
 $pluginIcon = Join-Path $workspace 'src\Lichen.Plugin\Assets\lichen-icon-24.png'
 $pluginIconResourceName = 'Lichen.Plugin.Assets.lichen-icon-24.png'
@@ -15,6 +16,18 @@ $selectChainIcon = Join-Path $workspace 'src\Lichen.Plugin\Assets\lichen-select-
 $selectChainIconResourceName = 'Lichen.Plugin.Assets.lichen-select-chain.svg'
 $createThallusIcon = Join-Path $workspace 'src\Lichen.Plugin\Assets\lichen-create-thallus.svg'
 $createThallusIconResourceName = 'Lichen.Plugin.Assets.lichen-create-thallus.svg'
+$spotlightIcon = Join-Path $workspace 'src\Lichen.Plugin\Assets\lichen-dependency-spotlight.svg'
+$spotlightIconResourceName = 'Lichen.Plugin.Assets.lichen-dependency-spotlight.svg'
+$exportIconNames = @('lichen-export-markdown.svg', 'lichen-export-json.svg', 'lichen-copy-markdown.svg')
+$exportIconResources = $exportIconNames | ForEach-Object {
+    $name = $_
+    $path = Join-Path $workspace ('src\Lichen.Plugin\Assets\' + $name)
+    [xml]$svg = Get-Content -Raw -LiteralPath $path
+    if ($svg.DocumentElement.LocalName -ne 'svg' -or $svg.DocumentElement.viewBox -ne '0 0 24 24') {
+        throw "Export icon must be a valid SVG with a 0 0 24 24 viewBox: $name"
+    }
+    '/resource:' + $path + ',Lichen.Plugin.Assets.' + $name
+}
 $yakTemplate = Join-Path $workspace 'packaging\yak'
 $yakManifest = Join-Path $yakTemplate 'manifest.yml'
 $yakReadme = Join-Path $yakTemplate 'README.md'
@@ -26,7 +39,7 @@ $yakPackage = Join-Path $artifacts 'yak\Lichen'
 $archive = Join-Path $artifacts ('Lichen-' + $releaseLabel + '.zip')
 $checksum = Join-Path $artifacts ('Lichen-' + $releaseLabel + '.sha256')
 
-foreach ($required in @($compiler, $rhino, $grasshopper, $ghio, $yak, $pluginIcon, $selectChainIcon, $createThallusIcon, $yakManifest, $yakReadme, $yakIcon)) {
+foreach ($required in @($compiler, $rhino, $grasshopper, $ghio, $yak, $pluginIcon, $selectChainIcon, $createThallusIcon, $spotlightIcon, $yakManifest, $yakReadme, $yakIcon)) {
     if (-not (Test-Path -LiteralPath $required)) { throw "Required build dependency not found: $required" }
 }
 
@@ -52,6 +65,11 @@ if ($selectChainSvg.DocumentElement.LocalName -ne 'svg' -or $selectChainSvg.Docu
 [xml]$createThallusSvg = Get-Content -Raw -LiteralPath $createThallusIcon
 if ($createThallusSvg.DocumentElement.LocalName -ne 'svg' -or $createThallusSvg.DocumentElement.viewBox -ne '0 0 24 24') {
     throw "Create Thallus icon must be a valid SVG with a 0 0 24 24 viewBox."
+}
+
+[xml]$spotlightSvg = Get-Content -Raw -LiteralPath $spotlightIcon
+if ($spotlightSvg.DocumentElement.LocalName -ne 'svg' -or $spotlightSvg.DocumentElement.viewBox -ne '0 0 24 24') {
+    throw "Spotlight icon must be a valid SVG with a 0 0 24 24 viewBox."
 }
 
 function Assert-ArtifactPath([string]$Path) {
@@ -92,9 +110,24 @@ $adapterSources = Get-ChildItem -LiteralPath (Join-Path $workspace 'src\Lichen.A
 Invoke-Compiler ($compilerDefaults + @('/target:library', ('/out:' + (Join-Path $output 'Lichen.Adapters.dll')), ('/r:' + (Join-Path $output 'Lichen.Core.dll')), ('/r:' + $rhino), ('/r:' + $grasshopper), ('/r:' + $ghio), '/r:System.Drawing.dll') + $adapterSources)
 
 $pluginSources = Get-ChildItem -LiteralPath (Join-Path $workspace 'src\Lichen.Plugin') -Recurse -Filter '*.cs' | Sort-Object FullName | ForEach-Object { $_.FullName }
-Invoke-Compiler ($compilerDefaults + @('/target:library', ('/out:' + (Join-Path $output 'Lichen.dll')), ('/resource:' + $pluginIcon + ',' + $pluginIconResourceName), ('/resource:' + $selectChainIcon + ',' + $selectChainIconResourceName), ('/resource:' + $createThallusIcon + ',' + $createThallusIconResourceName), ('/r:' + (Join-Path $output 'Lichen.Core.dll')), ('/r:' + (Join-Path $output 'Lichen.Adapters.dll')), ('/r:' + $rhino), ('/r:' + $grasshopper), ('/r:' + $ghio), '/r:System.Drawing.dll', '/r:System.Windows.Forms.dll') + $pluginSources)
+Invoke-Compiler ($compilerDefaults + @('/target:library', ('/out:' + (Join-Path $output 'Lichen.dll')), ('/resource:' + $pluginIcon + ',' + $pluginIconResourceName), ('/resource:' + $selectChainIcon + ',' + $selectChainIconResourceName), ('/resource:' + $createThallusIcon + ',' + $createThallusIconResourceName), ('/resource:' + $spotlightIcon + ',' + $spotlightIconResourceName), ('/r:' + (Join-Path $output 'Lichen.Core.dll')), ('/r:' + (Join-Path $output 'Lichen.Adapters.dll')), ('/r:' + $rhino), ('/r:' + $grasshopper), ('/r:' + $ghio), '/r:System.Drawing.dll', '/r:System.Windows.Forms.dll') + $exportIconResources + $pluginSources)
 
 $pluginAssembly = [System.Reflection.Assembly]::ReflectionOnlyLoadFrom((Join-Path $output 'Lichen.dll'))
+# Public release boundary: these experimental tools must not be shipped or registered.
+foreach ($assemblyFile in @('Lichen.Core.dll', 'Lichen.Adapters.dll', 'Lichen.dll')) {
+    $metadata = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes((Join-Path $output $assemblyFile)))
+    foreach ($forbidden in @('CurveDescriptor', 'DescriptorToCurve', 'ApplyCurveEdit', 'CurveEditService', 'IncludeCurveDescriptors')) {
+        if ($metadata.Contains($forbidden)) { throw "Public assembly $assemblyFile contains excluded curve metadata: $forbidden" }
+    }
+}
+foreach ($assemblyFile in @('Lichen.Adapters.dll', 'Lichen.dll')) {
+    $assembly = [System.Reflection.Assembly]::ReflectionOnlyLoadFrom((Join-Path $output $assemblyFile))
+    foreach ($reference in $assembly.GetReferencedAssemblies()) {
+        if ($reference.Name -in @('RhinoCommon', 'Grasshopper', 'GH_IO') -and $reference.Version.ToString() -ne $sdk.Version) {
+            throw "$assemblyFile references an unpinned host SDK: $reference"
+        }
+    }
+}
 if (-not ($pluginAssembly.GetManifestResourceNames() -contains $pluginIconResourceName)) {
     throw "Compiled plugin is missing its embedded Grasshopper icon."
 }
@@ -104,14 +137,33 @@ if (-not ($pluginAssembly.GetManifestResourceNames() -contains $selectChainIconR
 if (-not ($pluginAssembly.GetManifestResourceNames() -contains $createThallusIconResourceName)) {
     throw "Compiled plugin is missing its embedded Create Thallus icon."
 }
+if (-not ($pluginAssembly.GetManifestResourceNames() -contains $spotlightIconResourceName)) { throw 'Compiled plugin is missing its Spotlight icon.' }
+foreach ($name in $exportIconNames) {
+    if (-not ($pluginAssembly.GetManifestResourceNames() -contains ('Lichen.Plugin.Assets.' + $name))) {
+        throw "Compiled plugin is missing its export icon: $name"
+    }
+}
 Copy-Item -LiteralPath (Join-Path $output 'Lichen.dll') -Destination (Join-Path $output 'Lichen.gha') -Force
 
 $testSources = Get-ChildItem -LiteralPath (Join-Path $workspace 'tests\Lichen.Tests') -Recurse -Filter '*.cs' | Sort-Object FullName | ForEach-Object { $_.FullName }
 Invoke-Compiler ($compilerDefaults + @('/target:exe', ('/out:' + (Join-Path $output 'Lichen.Tests.exe')), ('/r:' + (Join-Path $output 'Lichen.Core.dll')), '/r:System.Runtime.Serialization.dll') + $testSources)
 
+# Compile the actual Thallus lifecycle code against minimal host doubles. This separate
+# executable loads no Rhino/Grasshopper assembly and is never included in a package.
+$lifecycleSources = Get-ChildItem -LiteralPath (Join-Path $workspace 'tests\Thallus.Lifecycle.Tests') -Filter '*.cs' | Sort-Object FullName | ForEach-Object { $_.FullName }
+Invoke-Compiler ($compilerDefaults + @('/target:exe', ('/out:' + (Join-Path $output 'Thallus.Lifecycle.Tests.exe')), ('/r:' + (Join-Path $output 'Lichen.Core.dll')), '/r:System.Drawing.dll', '/r:System.Windows.Forms.dll', (Join-Path $workspace 'src\Lichen.Plugin\LichenThallusGroup.cs')) + $lifecycleSources)
+
+# Exercise the real WinForms panel/menu helpers without a Rhino/Grasshopper host.
+$menuSources = Get-ChildItem -LiteralPath (Join-Path $workspace 'tests\Spotlight.Menu.Tests') -Filter '*.cs' | Sort-Object FullName | ForEach-Object { $_.FullName }
+Invoke-Compiler ($compilerDefaults + @('/target:exe', ('/out:' + (Join-Path $output 'Spotlight.Menu.Tests.exe')), ('/r:' + (Join-Path $output 'Lichen.Core.dll')), '/r:System.Drawing.dll', '/r:System.Windows.Forms.dll', (Join-Path $workspace 'src\Lichen.Plugin\SpotlightLegendPanel.cs'), (Join-Path $workspace 'src\Lichen.Plugin\SpotlightMenuLifetime.cs')) + $menuSources)
+
 if (-not $SkipTests) {
     & (Join-Path $output 'Lichen.Tests.exe')
     if ($LASTEXITCODE -ne 0) { throw "Automated tests failed with exit code $LASTEXITCODE." }
+    & (Join-Path $output 'Thallus.Lifecycle.Tests.exe')
+    if ($LASTEXITCODE -ne 0) { throw "Thallus lifecycle tests failed with exit code $LASTEXITCODE." }
+    & (Join-Path $output 'Spotlight.Menu.Tests.exe')
+    if ($LASTEXITCODE -ne 0) { throw "Spotlight menu tests failed with exit code $LASTEXITCODE." }
 }
 
 Copy-Item -LiteralPath (Join-Path $output 'Lichen.gha') -Destination $package -Force
@@ -163,6 +215,9 @@ finally { Pop-Location }
 
 $yakArtifacts = @(Get-ChildItem -LiteralPath $yakPackage -Filter '*.yak' -File)
 if ($yakArtifacts.Count -ne 1) { throw "Expected one generated Yak package; found $($yakArtifacts.Count)." }
+if ($yakArtifacts[0].Name -notmatch '-rh8(?:_0)?-win\.yak$') {
+    throw ('Expected a Rhino 8.0 Windows distribution; found ' + $yakArtifacts[0].Name)
+}
 $yakArchive = Join-Path $artifacts $yakArtifacts[0].Name
 $yakChecksum = $yakArchive + '.sha256'
 Remove-GeneratedFile $yakArchive

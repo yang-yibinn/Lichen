@@ -177,7 +177,7 @@ namespace Lichen.Core
             if (node == null) return false;
             Guid typeId;
             if (!Guid.TryParse(node.TypeId, out typeId)) return false;
-            return typeId == LichenComponentIds.ExportRoot || typeId == LichenComponentIds.Thallus || typeId == LichenComponentIds.ThallusEndpoint;
+            return DependencyClassification.IsLichenComponent(typeId);
         }
 
         private static void AddLimitNote(List<string> notes, int maximum)
@@ -224,7 +224,7 @@ namespace Lichen.Core
                 string name = EmptyTo(node.AssemblyName, "unknown");
                 string version = EmptyTo(node.AssemblyVersion, "unknown");
                 string key = name + "|" + version;
-                if (!values.ContainsKey(key)) values.Add(key, new ContextDependency { Name = name, Version = version, Kind = IsNativeAssembly(name) ? "grasshopper_native" : "third_party" });
+                if (!values.ContainsKey(key)) values.Add(key, new ContextDependency { Name = name, Version = version, Kind = DependencyClassification.IsNativeAssembly(name) ? "grasshopper_native" : "third_party" });
             }
             document.Dependencies = values.Values.OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase).ThenBy(d => d.Version, StringComparer.OrdinalIgnoreCase).ToList();
         }
@@ -506,16 +506,6 @@ namespace Lichen.Core
         private static string EdgeSortKey(ContextEdge edge) { return edge.SourceNodeId + "|" + edge.SourceParameterIndex.ToString("D6") + "|" + edge.TargetNodeId + "|" + edge.TargetParameterIndex.ToString("D6"); }
         private static string BoundarySortKey(ContextBoundaryPort port) { return port.InternalNodeId + "|" + port.ParameterIndex.ToString("D6") + "|" + port.ExternalNodeId; }
         private static string NodeDisplayName(Dictionary<string, ContextNode> nodes, string id) { ContextNode node; return nodes.TryGetValue(id, out node) ? EmptyTo(node.Nickname, EmptyTo(node.Name, id)) : id; }
-        private static bool IsNativeAssembly(string name)
-        {
-            string[] native = {
-                "Grasshopper", "CurveComponents", "FieldComponents", "IOComponents", "MathComponents", "MeshComponents",
-                "SurfaceComponents", "TriangulationComponents", "VectorComponents", "XformComponents", "TransformComponents",
-                "IntersectComponents", "GalapagosComponents", "RhinoCodePluginGH", "ScriptComponents", "GhPython",
-                "Kangaroo2Component", "KangarooSolver"
-            };
-            return native.Contains(name, StringComparer.OrdinalIgnoreCase) || name.StartsWith("Grasshopper", StringComparison.OrdinalIgnoreCase);
-        }
         private static string EmptyTo(string value, string fallback) { return String.IsNullOrWhiteSpace(value) ? fallback : value; }
     }
 
@@ -561,6 +551,30 @@ namespace Lichen.Core
             FunctionalEvidenceSet functionalEvidence = FunctionalEvidenceAnalyzer.Analyze(document, active);
             HashSet<string> consumed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+            foreach (ContextNode mapper in active.Where(IsGraphMapper))
+            {
+                string status = MetadataValue(mapper, "graphMapper.captureStatus");
+                string valid = MetadataValue(mapper, "graphMapper.graphValid");
+                bool complete = String.Equals(status, "captured", StringComparison.OrdinalIgnoreCase)
+                    && String.Equals(valid, "True", StringComparison.OrdinalIgnoreCase)
+                    && !String.IsNullOrWhiteSpace(MetadataValue(mapper, "graphMapper.graphType"))
+                    && !String.IsNullOrWhiteSpace(MetadataValue(mapper, "graphMapper.graphTypeId"))
+                    && !String.IsNullOrWhiteSpace(MetadataValue(mapper, "graphMapper.inputDomain"))
+                    && !String.IsNullOrWhiteSpace(MetadataValue(mapper, "graphMapper.outputDomain"))
+                    && !String.IsNullOrWhiteSpace(MetadataValue(mapper, "graphMapper.gripCount"))
+                    && !String.IsNullOrWhiteSpace(MetadataValue(mapper, "graphMapper.sampleCount"))
+                    && String.IsNullOrWhiteSpace(MetadataValue(mapper, "graphMapper.omittedGripCount"))
+                    && String.IsNullOrWhiteSpace(MetadataValue(mapper, "graphMapper.omittedSampleCount"));
+                if (!complete)
+                {
+                    string note = MetadataValue(mapper, "graphMapper.captureNote");
+                    analysis.Uncertainties.Add("Graph Mapper [" + ShortId(mapper.InstanceId) + "] authored function state is "
+                        + (String.IsNullOrWhiteSpace(status) ? "not captured" : status)
+                        + "; graph type, domains, grips, and bounded function samples may be incomplete"
+                        + (String.IsNullOrWhiteSpace(note) ? "." : ": " + TrimTerminalPunctuation(note) + "."));
+                }
+            }
+
             if (ContainsAll(active, "Deconstruct Brep", "Length", "Division", "Quad Panels"))
             {
                 analysis.DetectedOperations.Add("Surface boundary geometry is deconstructed and measured to derive panel-division values.");
@@ -576,10 +590,11 @@ namespace Lichen.Core
                 analysis.DetectedOperations.Add("Points are generated across the panel surfaces, mapped to surface UV coordinates, and evaluated with an image sampler.");
                 Consume(active, consumed, "Divide Surface", "Shift Paths", "Surface Closest Point", "Image Sampler");
             }
-            if (ContainsAll(active, "Remap Numbers", "Cull Pattern"))
+            List<ContextNode> imageCullPath;
+            if (TryFindOrderedPath(document, new[] { "Image Sampler", "Average", "Remap Numbers", "Graph Mapper", "Includes", "Cull Pattern" }, out imageCullPath))
             {
                 analysis.DetectedOperations.Add("Sampled numeric values are averaged, remapped, shaped through a graph function, and converted into a panel-culling pattern.");
-                Consume(active, consumed, "Average", "Divide Domain", "Remap Numbers", "Graph Mapper", "Includes", "Cull Pattern");
+                foreach (ContextNode node in imageCullPath) consumed.Add(node.InstanceId);
             }
             if (Has(active, "Area"))
             {
@@ -846,6 +861,72 @@ namespace Lichen.Core
 
         private static bool Has(IEnumerable<ContextNode> nodes, string name) { return nodes.Any(n => String.Equals(n.Name, name, StringComparison.OrdinalIgnoreCase)); }
         private static bool ContainsAll(IEnumerable<ContextNode> nodes, params string[] names) { return names.All(name => Has(nodes, name)); }
+        private static bool IsGraphMapper(ContextNode node)
+        {
+            return node != null && (String.Equals(node.RuntimeTypeName, "Grasshopper.Kernel.Special.GH_GraphMapper", StringComparison.OrdinalIgnoreCase)
+                || String.Equals(node.Name, "Graph Mapper", StringComparison.OrdinalIgnoreCase));
+        }
+        private static string MetadataValue(ContextNode node, string key)
+        {
+            ContextMetadataEntry entry = (node == null ? new List<ContextMetadataEntry>() : node.ExecutionMetadata ?? new List<ContextMetadataEntry>())
+                .FirstOrDefault(value => value != null && String.Equals(value.Key, key, StringComparison.OrdinalIgnoreCase));
+            return entry == null ? "" : entry.Value ?? "";
+        }
+        private static bool TryFindOrderedPath(ContextDocument document, IList<string> stageNames, out List<ContextNode> path)
+        {
+            path = new List<ContextNode>();
+            if (document == null || stageNames == null || stageNames.Count == 0) return false;
+            Dictionary<string, ContextNode> nodes = (document.Nodes ?? new List<ContextNode>())
+                .Where(node => node != null && !String.IsNullOrWhiteSpace(node.InstanceId))
+                .GroupBy(node => node.InstanceId, StringComparer.OrdinalIgnoreCase).ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, List<string>> adjacency = nodes.Keys.ToDictionary(id => id, id => new List<string>(), StringComparer.OrdinalIgnoreCase);
+            foreach (ContextEdge edge in document.Edges ?? new List<ContextEdge>())
+            {
+                if (edge == null || String.IsNullOrWhiteSpace(edge.SourceNodeId) || String.IsNullOrWhiteSpace(edge.TargetNodeId)
+                    || !nodes.ContainsKey(edge.SourceNodeId) || !nodes.ContainsKey(edge.TargetNodeId)) continue;
+                if (!adjacency[edge.SourceNodeId].Contains(edge.TargetNodeId, StringComparer.OrdinalIgnoreCase)) adjacency[edge.SourceNodeId].Add(edge.TargetNodeId);
+            }
+            foreach (List<string> next in adjacency.Values) next.Sort(StringComparer.OrdinalIgnoreCase);
+            foreach (ContextNode start in nodes.Values.Where(node => String.Equals(node.Name, stageNames[0], StringComparison.OrdinalIgnoreCase)).OrderBy(node => node.InstanceId, StringComparer.OrdinalIgnoreCase))
+            {
+                List<ContextNode> candidate = new List<ContextNode> { start };
+                if (TryExtendOrderedPath(start, 1, stageNames, nodes, adjacency, candidate)) { path = candidate; return true; }
+            }
+            return false;
+        }
+        private static bool TryExtendOrderedPath(ContextNode current, int stageIndex, IList<string> stageNames,
+            IDictionary<string, ContextNode> nodes, IDictionary<string, List<string>> adjacency, IList<ContextNode> path)
+        {
+            if (stageIndex >= stageNames.Count) return true;
+            foreach (ContextNode next in nodes.Values.Where(node => String.Equals(node.Name, stageNames[stageIndex], StringComparison.OrdinalIgnoreCase))
+                .OrderBy(node => node.InstanceId, StringComparer.OrdinalIgnoreCase))
+            {
+                if (path.Any(node => String.Equals(node.InstanceId, next.InstanceId, StringComparison.OrdinalIgnoreCase))
+                    || !CanReach(current.InstanceId, next.InstanceId, adjacency)) continue;
+                path.Add(next);
+                if (TryExtendOrderedPath(next, stageIndex + 1, stageNames, nodes, adjacency, path)) return true;
+                path.RemoveAt(path.Count - 1);
+            }
+            return false;
+        }
+        private static bool CanReach(string start, string target, IDictionary<string, List<string>> adjacency)
+        {
+            if (String.Equals(start, target, StringComparison.OrdinalIgnoreCase)) return true;
+            HashSet<string> visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { start };
+            Queue<string> pending = new Queue<string>(); pending.Enqueue(start);
+            while (pending.Count > 0)
+            {
+                string current = pending.Dequeue();
+                List<string> next;
+                if (!adjacency.TryGetValue(current, out next)) continue;
+                foreach (string id in next)
+                {
+                    if (String.Equals(id, target, StringComparison.OrdinalIgnoreCase)) return true;
+                    if (visited.Add(id)) pending.Enqueue(id);
+                }
+            }
+            return false;
+        }
         private static void Consume(IEnumerable<ContextNode> nodes, HashSet<string> consumed, params string[] names)
         {
             HashSet<string> set = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);

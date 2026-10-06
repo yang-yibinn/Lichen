@@ -8,13 +8,18 @@ namespace Lichen.Plugin
 {
     public sealed class LichenInfo : GH_AssemblyInfo
     {
-        internal const string CurrentVersion = "0.8.2";
+        internal const string CurrentVersion = "0.8.3";
         private const string IconResourceName = "Lichen.Plugin.Assets.lichen-icon-24.png";
         private const string SelectChainIconResourceName = "Lichen.Plugin.Assets.lichen-select-chain.svg";
         private const string CreateThallusIconResourceName = "Lichen.Plugin.Assets.lichen-create-thallus.svg";
+        private const string SpotlightIconResourceName = "Lichen.Plugin.Assets.lichen-dependency-spotlight.svg";
         private static readonly Bitmap CachedIcon = LoadIcon();
         private static readonly string CachedSelectChainSvg = LoadTextResource(SelectChainIconResourceName);
         private static readonly string CachedCreateThallusSvg = LoadTextResource(CreateThallusIconResourceName);
+        private static readonly string CachedSpotlightSvg = LoadTextResource(SpotlightIconResourceName);
+        private static readonly string CachedExportMarkdownSvg = LoadTextResource("Lichen.Plugin.Assets.lichen-export-markdown.svg");
+        private static readonly string CachedCopyMarkdownSvg = LoadTextResource("Lichen.Plugin.Assets.lichen-copy-markdown.svg");
+        private static readonly string CachedExportJsonSvg = LoadTextResource("Lichen.Plugin.Assets.lichen-export-json.svg");
 
         public override string Name { get { return "Lichen"; } }
         public override string Version { get { return CurrentVersion; } }
@@ -75,6 +80,12 @@ namespace Lichen.Plugin
                 finally { DestroyIcon(handle); }
             }
         }
+
+        internal static Bitmap CreateSpotlightIcon(int size) { return CreateSvgIcon(CachedSpotlightSvg, size); }
+        internal static Bitmap CreateExportMarkdownIcon(int size) { return CreateSvgIcon(CachedExportMarkdownSvg, size); }
+        internal static Bitmap CreateCopyMarkdownIcon(int size) { return CreateSvgIcon(CachedCopyMarkdownSvg, size); }
+        internal static Bitmap CreateExportJsonIcon(int size) { return CreateSvgIcon(CachedExportJsonSvg, size); }
+        internal static Bitmap CreateSpotlightIcon(int size, Color color) { return CreateTintedSvgIcon(CachedSpotlightSvg, size, color); }
 
         private static Bitmap LoadIcon()
         {

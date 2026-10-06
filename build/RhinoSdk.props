@@ -1,0 +1,23 @@
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- Shared by MSBuild and tools/Restore-RhinoSdk.ps1. Change only after compatibility review. -->
+  <PropertyGroup>
+    <RhinoSdkVersion>8.0.23304.9001</RhinoSdkVersion>
+    <RhinoCommonPackageSha256>437132514d648c27a8020511e9aa3eaeb815512751c86376cb1cded6eba0c549</RhinoCommonPackageSha256>
+    <GrasshopperPackageSha256>173088f6438c8eed07384ad83cb6debd99b236d8974c681fce8ad1ff766917d1</GrasshopperPackageSha256>
+    <RhinoSdkRoot>$(MSBuildThisFileDirectory)..\.build\rhino-sdk\$(RhinoSdkVersion)</RhinoSdkRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="RhinoCommon, Version=$(RhinoSdkVersion), Culture=neutral, PublicKeyToken=552281e97c755530">
+      <HintPath>$(RhinoSdkRoot)\rhinocommon\RhinoCommon.dll</HintPath><SpecificVersion>True</SpecificVersion><Private>False</Private>
+    </Reference>
+    <Reference Include="Grasshopper, Version=$(RhinoSdkVersion), Culture=neutral, PublicKeyToken=dda4f5ec2cd80803">
+      <HintPath>$(RhinoSdkRoot)\grasshopper\Grasshopper.dll</HintPath><SpecificVersion>True</SpecificVersion><Private>False</Private>
+    </Reference>
+    <Reference Include="GH_IO, Version=$(RhinoSdkVersion), Culture=neutral, PublicKeyToken=6a29997d2e6b4f97">
+      <HintPath>$(RhinoSdkRoot)\grasshopper\GH_IO.dll</HintPath><SpecificVersion>True</SpecificVersion><Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  <Target Name="RequirePinnedRhinoSdk" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(RhinoSdkRoot)\rhinocommon\RhinoCommon.dll') Or !Exists('$(RhinoSdkRoot)\grasshopper\Grasshopper.dll') Or !Exists('$(RhinoSdkRoot)\grasshopper\GH_IO.dll')" Text="Restore the pinned Rhino SDK first: run tools\Restore-RhinoSdk.ps1 from Windows PowerShell. Installed Rhino SDK fallback is not supported." />
+  </Target>
+</Project>

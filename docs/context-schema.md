@@ -67,6 +67,10 @@ Stateful or controlling nodes may also include:
 - `controlLinks`: relationships that are not ordinary Grasshopper wires. Examples include timer targets and Galapagos genome/fitness links. Each record has a `role` and `targetNodeId`.
 - `clusterGraph`: a bounded nested graph for an unprotected cluster, or an explicit status explaining why inspection was unavailable.
 
+### Authored Graph Mapper state
+
+Native Graph Mapper authored state is recorded in ordered `graphMapper.*` execution metadata: graph type/type ID, validity, input/output domains, grip lock, bounded indexed grips, and 17 fixed normalized/domain-mapped samples. The projection limits grips to 64 and samples to 33. Partial, invalid, non-finite, or unavailable state is disclosed with capture notes and uncertainties. This is authored control state, not volatile numeric output; capture does not solve or edit the mapper. It uses the existing schema 0.8 metadata extension point.
+
 ### Cluster graphs
 
 `clusterGraph.inspectionStatus` is one of:

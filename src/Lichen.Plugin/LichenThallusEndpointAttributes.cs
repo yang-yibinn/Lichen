@@ -4,6 +4,7 @@ using Grasshopper.GUI;
 using Grasshopper.GUI.Canvas;
 using Grasshopper.Kernel;
 using Grasshopper.Kernel.Attributes;
+using Lichen.Core;
 
 namespace Lichen.Plugin
 {
@@ -16,13 +17,13 @@ namespace Lichen.Plugin
         private const float LabelWidth = 18F;
         private const float LabelHeight = 20F;
         private const float LabelGap = 7F;
+        private const float OuterMargin = 3F;
 
         internal LichenThallusEndpointAttributes(LichenThallusEndpointComponent owner) : base(owner) { }
 
         protected override void Layout()
         {
-            m_innerBounds = new RectangleF(Pivot.X - 0.5F, Pivot.Y - 0.5F, 1F, 1F);
-            Bounds = m_innerBounds;
+            SetInfrastructureAnchor(Pivot);
             UpdateBoundaryLocation();
         }
 
@@ -40,11 +41,13 @@ namespace Lichen.Plugin
             RectangleF hitBounds, labelBounds;
             if (TryGetPortLayout(out socket, out hitBounds, out labelBounds))
             {
+                SetInfrastructureAnchor(socket);
                 Owner.Params.Output[0].Attributes.Pivot = socket;
                 Owner.Params.Output[0].Attributes.Bounds = hitBounds;
             }
             else
             {
+                SetInfrastructureAnchor(Pivot);
                 Owner.Params.Output[0].Attributes.Pivot = Pivot;
                 Owner.Params.Output[0].Attributes.Bounds = m_innerBounds;
             }
@@ -108,10 +111,37 @@ namespace Lichen.Plugin
             if (group == null || group.Attributes == null) return false;
             RectangleF groupBounds = group.Attributes.Bounds;
             if (groupBounds.Width <= 0F || groupBounds.Height <= 0F) return false;
-            socket = new PointF(groupBounds.Right, groupBounds.Top + groupBounds.Height * 0.5F);
-            hitBounds = new RectangleF(socket.X - SocketHitSize * 0.5F, socket.Y - SocketHitSize * 0.5F, SocketHitSize, SocketHitSize);
-            labelBounds = new RectangleF(socket.X - LabelGap - LabelWidth, socket.Y - LabelHeight * 0.5F, LabelWidth, LabelHeight);
+            ThallusEndpointPortBounds port = ThallusEndpointLayout.OutsideRightPort(
+                new ThallusEndpointBounds
+                {
+                    X = groupBounds.X,
+                    Y = groupBounds.Y,
+                    Width = groupBounds.Width,
+                    Height = groupBounds.Height
+                },
+                LabelWidth,
+                LabelHeight,
+                LabelGap,
+                SocketHitSize,
+                OuterMargin);
+            socket = new PointF((float)port.SocketX, (float)port.SocketY);
+            hitBounds = ToRectangle(port.HitBounds);
+            labelBounds = ToRectangle(port.LabelBounds);
             return true;
+        }
+
+        private void SetInfrastructureAnchor(PointF anchor)
+        {
+            m_innerBounds = new RectangleF(anchor.X - 0.5F, anchor.Y - 0.5F, 1F, 1F);
+            // The endpoint is ownership and wiring infrastructure, not visible group content.
+            // GH_Group ignores empty member bounds, so this live anchor cannot pin the outline.
+            ThallusEndpointBounds excluded = ThallusEndpointLayout.ExcludedGroupBounds(anchor.X, anchor.Y);
+            Bounds = ToRectangle(excluded);
+        }
+
+        private static RectangleF ToRectangle(ThallusEndpointBounds bounds)
+        {
+            return new RectangleF((float)bounds.X, (float)bounds.Y, (float)bounds.Width, (float)bounds.Height);
         }
     }
 }

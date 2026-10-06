@@ -16,7 +16,7 @@ namespace Lichen.Plugin
 {
     public sealed class LichenExportDialog : Form
     {
-        private static readonly GH_SettingsServer PurposeSettings = new GH_SettingsServer("Lichen");
+        private static readonly GH_SettingsServer LocalSettings = new GH_SettingsServer("Lichen");
 
         private readonly ComboBox scope = new ComboBox();
         private readonly ComboBox detail = new ComboBox();
@@ -34,6 +34,8 @@ namespace Lichen.Plugin
         private bool exactSelected;
         private bool appendixBeforeExact;
         private readonly string initialRootId;
+        private readonly string draftContextKey;
+        private readonly ExportContextDraftStore draftStore;
 
         public LichenExportDialog() : this(null)
         {
@@ -42,13 +44,16 @@ namespace Lichen.Plugin
         public LichenExportDialog(string rootObjectId)
         {
             initialRootId = rootObjectId ?? "";
+            draftContextKey = ExportContextKey(initialRootId);
+            draftStore = new ExportContextDraftStore(new GrasshopperDraftSettings(LocalSettings));
             Text = "Lichen — Export Grasshopper Context"; StartPosition = FormStartPosition.CenterParent;
             MinimizeBox = false; MaximizeBox = false; ShowInTaskbar = false; FormBorderStyle = FormBorderStyle.FixedDialog;
             AutoScaleMode = AutoScaleMode.Dpi; ClientSize = new Size(610, 710); Font = SystemFonts.MessageBoxFont;
             Icon = LichenInfo.CreateDialogIcon(); ShowIcon = Icon != null;
             help.AutoPopDelay = 12000; help.InitialDelay = 450; help.ReshowDelay = 100; help.ShowAlways = true;
             BuildLayout();
-            FormClosing += delegate { PersistClusterPurposes(true); };
+            RestoreExportContextDraft();
+            FormClosing += delegate { PersistClusterPurposes(true); PersistExportContextDraft(true); };
         }
 
         protected override void Dispose(bool disposing)
@@ -81,15 +86,15 @@ namespace Lichen.Plugin
 
             Label purposeLabel = AddLabel("Purpose", left, top, labelWidth);
             purpose.SetBounds(fieldLeft, top - 3, fieldWidth, 62); purpose.Multiline = true; purpose.ScrollBars = ScrollBars.Vertical; Controls.Add(purpose);
-            SetHelp("Optional description of what the selected workflow is intended to accomplish. Lichen labels this as user-provided rather than inferred.", purposeLabel, purpose); top += 72;
+            SetHelp("Optional description of what the selected workflow is intended to accomplish. Lichen labels this as user-provided rather than inferred and restores it from local Lichen settings for this root or document.", purposeLabel, purpose); top += 72;
 
             Label taskLabel = AddLabel("Requested task", left, top, labelWidth);
             task.SetBounds(fieldLeft, top - 3, fieldWidth, 62); task.Multiline = true; task.ScrollBars = ScrollBars.Vertical; Controls.Add(task);
-            SetHelp("Optional instructions for the person or coding agent receiving the export, such as what to review, explain, or change.", taskLabel, task); top += 72;
+            SetHelp("Optional instructions for the person or coding agent receiving the export, such as what to review, explain, or change. The draft is stored in local Lichen settings, not in the Grasshopper definition.", taskLabel, task); top += 72;
 
             Label constraintsLabel = AddLabel("Constraints", left, top, labelWidth);
             constraints.SetBounds(fieldLeft, top - 3, fieldWidth, 62); constraints.Multiline = true; constraints.ScrollBars = ScrollBars.Vertical; Controls.Add(constraints);
-            SetHelp("Optional requirements or boundaries the recipient should preserve, such as plugins, tolerances, performance limits, or read-only rules.", constraintsLabel, constraints); top += 75;
+            SetHelp("Optional requirements or boundaries the recipient should preserve, such as plugins, tolerances, performance limits, or read-only rules. The draft is stored in local Lichen settings, not in the Grasshopper definition.", constraintsLabel, constraints); top += 75;
 
             Label clustersLabel = AddLabel("Clusters", left, top, labelWidth);
             clusterPurposes.SetBounds(fieldLeft, top - 3, fieldWidth, 140);
@@ -111,10 +116,10 @@ namespace Lichen.Plugin
 
             TableLayoutPanel actionRow = new TableLayoutPanel(); actionRow.SetBounds(left, top, 570, 36); actionRow.ColumnCount = 4; actionRow.RowCount = 1; actionRow.Margin = Padding.Empty; actionRow.Padding = Padding.Empty;
             actionRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28F)); actionRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30F)); actionRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 24F)); actionRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18F));
-            Button copy = MakeButton("Copy Markdown"); copy.Margin = new Padding(0, 0, 8, 0); copy.Click += delegate { RunAction(CopyMarkdown); }; SetHelp("Builds the selected export and copies its Markdown to the Windows clipboard.", copy);
-            Button saveMarkdown = MakeButton("Save Markdown…"); saveMarkdown.Margin = new Padding(0, 0, 8, 0); saveMarkdown.Click += delegate { RunAction(SaveMarkdown); }; SetHelp("Builds the selected export and saves its Markdown to a file you choose.", saveMarkdown);
-            Button saveJson = MakeButton("Save JSON…"); saveJson.Margin = new Padding(0, 0, 8, 0); saveJson.Click += delegate { RunAction(SaveJson); }; SetHelp("Builds the selected export and saves the complete machine-readable JSON graph.", saveJson);
-            Button close = MakeButton("Close"); close.Margin = Padding.Empty; close.DialogResult = DialogResult.Cancel; CancelButton = close; SetHelp("Saves cluster purpose notes locally and closes this dialog.", close);
+            Button copy = new LichenExportButton("Copy Markdown", LichenInfo.CreateCopyMarkdownIcon); copy.Margin = new Padding(0, 0, 8, 0); copy.Click += delegate { RunAction(CopyMarkdown); }; SetHelp("Builds the selected export and copies its Markdown to the Windows clipboard.", copy);
+            Button saveMarkdown = new LichenExportButton("Save Markdown…", LichenInfo.CreateExportMarkdownIcon); saveMarkdown.Margin = new Padding(0, 0, 8, 0); saveMarkdown.Click += delegate { RunAction(SaveMarkdown); }; SetHelp("Builds the selected export and saves its Markdown to a file you choose.", saveMarkdown);
+            Button saveJson = new LichenExportButton("Save JSON…", LichenInfo.CreateExportJsonIcon); saveJson.Margin = new Padding(0, 0, 8, 0); saveJson.Click += delegate { RunAction(SaveJson); }; SetHelp("Builds the selected export and saves the complete machine-readable JSON graph.", saveJson);
+            Button close = MakeButton("Close"); close.Margin = Padding.Empty; close.DialogResult = DialogResult.Cancel; CancelButton = close; SetHelp("Saves metadata drafts and cluster purpose notes to local Lichen settings, then closes this dialog.", close);
             actionRow.Controls.Add(copy, 0, 0); actionRow.Controls.Add(saveMarkdown, 1, 0); actionRow.Controls.Add(saveJson, 2, 0); actionRow.Controls.Add(close, 3, 0); Controls.Add(actionRow);
             top += 48;
             status.SetBounds(left, top, 570, 60); status.AutoEllipsis = true; status.ForeColor = SystemColors.GrayText; status.Text = "Lichen reads the current graph only. It does not solve or modify the Grasshopper document."; Controls.Add(status);
@@ -195,7 +200,7 @@ namespace Lichen.Plugin
 
         private ContextExportOptions Options()
         {
-            clusterPurposes.EndEdit(); PersistClusterPurposes(true);
+            clusterPurposes.EndEdit(); PersistClusterPurposes(true); PersistExportContextDraft(true);
             ScopeChoice scopeChoice = (ScopeChoice)scope.SelectedItem; DetailChoice detailChoice = (DetailChoice)detail.SelectedItem;
             ContextExportOptions options = new ContextExportOptions { ScopeMode = scopeChoice.Mode, RootObjectId = scopeChoice.RootObjectId, RootLabel = scopeChoice.RootLabel, DetailLevel = detailChoice.Level, Purpose = purpose.Text, RequestedTask = task.Text, Constraints = constraints.Text, IncludeScriptSource = scripts.Checked, IncludeRuntimeSummary = runtime.Checked, IncludeJsonAppendix = jsonAppendix.Checked || detailChoice.Level == DetailLevel.Exact, MaximumNodes = 500, ExporterVersion = LichenInfo.CurrentVersion };
             foreach (DataGridViewRow row in clusterPurposes.Rows)
@@ -267,7 +272,7 @@ namespace Lichen.Plugin
                 item.Name = ClusterName(item.Instances.OrderBy(c => c.InstanceGuid).First());
                 item.Protection = ClusterProtection(item.Instances);
                 item.InstanceCount = SafeInstanceCount(document, item);
-                string stored = PurposeSettings.GetValue(item.SettingsKey, "") ?? "";
+                string stored = LocalSettings.GetValue(item.SettingsKey, "") ?? "";
                 item.Purpose = stored; savedPurposeValues[item.SettingsKey] = stored;
             }
             foreach (ClusterPurposeRow item in items)
@@ -312,15 +317,53 @@ namespace Lichen.Plugin
                     string value = Convert.ToString(row.Cells[1].Value) ?? ""; value = value.Trim();
                     string previous;
                     if (savedPurposeValues.TryGetValue(item.SettingsKey, out previous) && String.Equals(previous, value, StringComparison.Ordinal)) continue;
-                    PurposeSettings.SetValue(item.SettingsKey, value); savedPurposeValues[item.SettingsKey] = value; changed = true;
+                    LocalSettings.SetValue(item.SettingsKey, value); savedPurposeValues[item.SettingsKey] = value; changed = true;
                 }
-                if (changed) PurposeSettings.WritePersistentSettings();
+                if (changed) LocalSettings.WritePersistentSettings();
             }
             catch (Exception ex)
             {
                 if (showError) MessageBox.Show(this, "Cluster purposes could not be saved for the next session: " + ex.Message, "Lichen", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 else { status.ForeColor = Color.DarkGoldenrod; status.Text = "Cluster purposes could not be saved for the next session: " + ex.Message; }
             }
+        }
+
+        private void RestoreExportContextDraft()
+        {
+            try
+            {
+                ExportContextDraft draft = draftStore.Load(draftContextKey);
+                purpose.Text = draft.Purpose;
+                task.Text = draft.RequestedTask;
+                constraints.Text = draft.Constraints;
+            }
+            catch (Exception ex)
+            {
+                status.ForeColor = Color.DarkGoldenrod;
+                status.Text = "Metadata drafts could not be restored from local Lichen settings: " + ex.Message;
+            }
+        }
+
+        private void PersistExportContextDraft(bool showError)
+        {
+            try
+            {
+                draftStore.Save(draftContextKey, new ExportContextDraft { Purpose = purpose.Text, RequestedTask = task.Text, Constraints = constraints.Text });
+            }
+            catch (Exception ex)
+            {
+                if (showError) MessageBox.Show(this, "Metadata drafts could not be saved to local Lichen settings: " + ex.Message, "Lichen", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                else { status.ForeColor = Color.DarkGoldenrod; status.Text = "Metadata drafts could not be saved to local Lichen settings: " + ex.Message; }
+            }
+        }
+
+        private static string ExportContextKey(string rootObjectId)
+        {
+            Guid rootId;
+            if (Guid.TryParse(rootObjectId, out rootId) && rootId != Guid.Empty) return "root_" + rootId.ToString("N");
+            GH_Document document = Instances.ActiveDocument;
+            try { return document == null || document.DocumentID == Guid.Empty ? "" : "document_" + document.DocumentID.ToString("N"); }
+            catch { return ""; }
         }
 
         private static Guid SafeDocumentId(GH_Cluster cluster) { try { return cluster.DocumentId; } catch { return Guid.Empty; } }
@@ -360,6 +403,15 @@ namespace Lichen.Plugin
             public ClusterPurposeRow() { Instances = new List<GH_Cluster>(); InstanceIds = new List<string>(); Name = "Cluster"; DisplayName = "Cluster"; Protection = ""; Purpose = ""; DefinitionKey = ""; SettingsKey = ""; }
             public Guid DefinitionId; public string DefinitionKey; public string SettingsKey; public string Name; public string DisplayName; public string Protection; public string Purpose;
             public int InstanceCount; public int SelectedCount; public List<GH_Cluster> Instances; public List<string> InstanceIds;
+        }
+
+        private sealed class GrasshopperDraftSettings : IExportContextDraftSettings
+        {
+            private readonly GH_SettingsServer settings;
+            public GrasshopperDraftSettings(GH_SettingsServer settings) { this.settings = settings; }
+            public string GetValue(string key, string fallback) { return settings.GetValue(key, fallback); }
+            public void SetValue(string key, string value) { settings.SetValue(key, value); }
+            public void WritePersistentSettings() { settings.WritePersistentSettings(); }
         }
     }
 }

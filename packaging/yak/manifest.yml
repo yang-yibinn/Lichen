@@ -1,5 +1,5 @@
 name: LichenGH
-version: 0.8.2
+version: 0.8.3
 authors:
   - Yibin Yang
 description: |
@@ -53,13 +53,13 @@ description: |
 
   Lichen runs locally. It does not serialize full geometry, access the network, call an AI model, alter wires, change component states during export, or force a solution. Capture, highlighting, and export remain read-only. Selection changes only after the user explicitly invokes **Select chain**; **Create Thallus** and Thallus editing mutate only their requested Lichen objects with Grasshopper undo records. A 500-object limit keeps each scope bounded; oversized exact Thallus scopes abort rather than export partially.
 
-  **Version 0.8.2 highlights**
+  **Version 0.8.3 highlights**
 
-  - Exact persistent **Thallus** workflow scopes with explicit membership, nesting, descriptions, and properties
-  - Outermost T outputs with validated direct, Relay, Merge, and Jitter Values routing
-  - Deterministic routed-identity order and region-aware Technical presentation
-  - Connected functional evidence and per-Thallus semantic summaries
-  - Improved Technical evidence localization, stable ambiguous-value and boundary IDs, and same-label fan-out preservation
+  - **Spotlight** for temporary third-party and script highlights with layer/focus controls
+  - Improved radial placement and Thallus layout, profiler, and delete/undo cache handling
+  - Authored Graph Mapper state and corrected Galapagos genome-reference reporting
+  - Locally saved export metadata drafts and distinct copy/save icons
+  - Pinned Rhino 8.0 SDK; main export remains schema 0.8 without experimental curve tools
 url: "https://github.com/yang-yibinn/Lichen"
 icon: icon.png
 keywords:

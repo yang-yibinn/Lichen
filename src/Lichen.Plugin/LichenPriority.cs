@@ -10,18 +10,21 @@ namespace Lichen.Plugin
     public sealed class LichenPriority : GH_AssemblyPriority
     {
         private const string MenuName = "LichenMainMenu";
+        internal static readonly LichenSpotlightController Spotlight = new LichenSpotlightController();
 
         public override GH_LoadingInstruction PriorityLoad()
         {
             Instances.CanvasCreated += OnCanvasCreated;
             Instances.CanvasDestroyed += OnCanvasDestroyed;
             LichenRadialMenuController.Attach(Instances.ActiveCanvas);
+            Spotlight.Attach(Instances.ActiveCanvas);
             return GH_LoadingInstruction.Proceed;
         }
 
         private static void OnCanvasCreated(GH_Canvas canvas)
         {
             LichenRadialMenuController.Attach(canvas);
+            Spotlight.Attach(canvas);
             try
             {
                 Form editor = Instances.DocumentEditor;
@@ -38,6 +41,7 @@ namespace Lichen.Plugin
         private static void OnCanvasDestroyed(GH_Canvas canvas)
         {
             LichenRadialMenuController.Detach(canvas);
+            Spotlight.Detach(canvas);
         }
 
         private static void InstallMenu(Form editor)

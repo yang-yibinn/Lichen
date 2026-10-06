@@ -1,4 +1,4 @@
-# Lichen 0.8.2
+# Lichen 0.8.3
 
 **Lichen creates a shared language between Grasshopper definitions and coding agents.**
 
@@ -51,21 +51,21 @@ Lichen can inspect unprotected clusters as bounded nested graphs. Password-prote
 
 Lichen runs locally. It does not serialize full geometry, access the network, call an AI model, alter wires, change component states during export, or force a solution. Capture, highlighting, and export remain read-only. Selection changes only after the user explicitly invokes **Select chain**; **Create Thallus** and Thallus editing mutate only their requested Lichen document objects with Grasshopper undo records. A 500-object limit keeps each scope bounded; upstream roots disclose truncation, while oversized exact Thallus scopes abort rather than export partially.
 
-## Version 0.8.2 highlights
+## Version 0.8.3 highlights
 
-- Exact persistent **Thallus** workflow scopes with explicit membership, nesting, descriptions, and properties
-- Outermost T outputs with validated direct, Relay, Merge, and Jitter Values routing
-- Deterministic routed-identity order and region-aware Technical presentation
-- Connected functional evidence and per-Thallus semantic summaries
-- Improved Technical evidence localization, stable ambiguous-value and boundary IDs, and same-label fan-out preservation
+- **Spotlight** for temporary third-party and script highlights with layer/focus controls
+- Improved radial placement and Thallus layout, profiler, and delete/undo cache handling
+- Authored Graph Mapper state and corrected Galapagos genome-reference reporting
+- Locally saved export metadata drafts and distinct copy/save icons
+- Pinned Rhino 8.0 SDK; main export remains schema 0.8 without experimental curve tools
 
 ## Package Manager installation
 
-Install **LichenGH** from Rhino's Package Manager and restart Rhino when prompted. The Grasshopper plugin and component are named **Lichen**.
+The v0.8.3 ZIP and Yak archives are available from GitHub Releases. This GitHub publication does not update the hosted Rhino Package Manager listing. Use the ZIP manual-install instructions for this version.
 
 ## Compatibility
 
-- Rhino 8.30 or later for Windows
+- Rhino 8 for Windows; built against SDK 8.0.23304.9001. Earlier/later service-release and runtime-mode host validation remains incomplete; the previous public target was 8.30+.
 - Grasshopper 1
 
 Source, documentation, and issue tracking: <https://github.com/yang-yibinn/Lichen>

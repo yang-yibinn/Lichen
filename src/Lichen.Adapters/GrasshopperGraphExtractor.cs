@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using Grasshopper.Kernel;
 using Grasshopper.Kernel.Data;
+using Grasshopper.Kernel.Graphs;
 using Grasshopper.Kernel.Special;
 using Lichen.Core;
 
@@ -500,7 +501,15 @@ namespace Lichen.Adapters
             string typeName = obj.GetType().FullName ?? "";
             string lower = typeName.ToLowerInvariant();
 
-            if (lower == "grasshopper.kernel.special.gh_timer")
+            GH_GraphMapper graphMapper = obj as GH_GraphMapper;
+            if (graphMapper != null)
+            {
+                GraphMapperStateCapture capture = CaptureGraphMapperState(graphMapper);
+                if (node.ExecutionMetadata == null) node.ExecutionMetadata = new List<ContextMetadataEntry>();
+                node.ExecutionMetadata.AddRange(GraphMapperStateProjection.Metadata(capture));
+                node.PersistentValueSummary = GraphMapperStateProjection.ReadableSummary(capture);
+            }
+            else if (lower == "grasshopper.kernel.special.gh_timer")
             {
                 AddMetadata(node, "timerIntervalMilliseconds", SafeProperty(obj, "Interval"));
                 AddMetadata(node, "timerInterval", SafeProperty(obj, "IntervalString"));
@@ -548,11 +557,91 @@ namespace Lichen.Adapters
             }
         }
 
+        private static GraphMapperStateCapture CaptureGraphMapperState(GH_GraphMapper mapper)
+        {
+            try
+            {
+                GH_GraphContainer container = mapper == null ? null : mapper.Container;
+                IGH_Graph graph = mapper == null ? null : mapper.Graph;
+                if (container == null || graph == null)
+                    return GraphMapperStateProjection.Unavailable("Grasshopper exposed no current Graph Mapper container or graph through its public API.");
+                if (!Finite(container.X0) || !Finite(container.X1) || !Finite(container.Y0) || !Finite(container.Y1))
+                    return GraphMapperStateProjection.Unavailable("Grasshopper exposed a non-finite Graph Mapper domain.");
+
+                GraphMapperStateCapture capture = new GraphMapperStateCapture
+                {
+                    CaptureStatus = "captured",
+                    GraphType = graph.Name ?? "",
+                    GraphTypeId = graph.GraphTypeID.ToString("D", CultureInfo.InvariantCulture),
+                    GraphValid = graph.IsValid,
+                    LockGrips = container.LockGrips,
+                    InputDomainStart = container.X0,
+                    InputDomainEnd = container.X1,
+                    OutputDomainStart = container.Y0,
+                    OutputDomainEnd = container.Y1,
+                    TotalGripCount = graph.Grips == null ? 0 : graph.Grips.Count,
+                    TotalSampleCount = GraphMapperStateProjection.DefaultSampleCount
+                };
+
+                foreach (GH_GraphGrip grip in (graph.Grips ?? new List<GH_GraphGrip>()).Take(GraphMapperStateProjection.MaximumGrips))
+                {
+                    if (grip == null || !Finite(grip.X) || !Finite(grip.Y))
+                    {
+                        MarkGraphMapperPartial(capture, "One or more Graph Mapper grips were unavailable or non-finite.");
+                        continue;
+                    }
+                    capture.Grips.Add(new GraphMapperGripState { Index = grip.Index, X = grip.X, Y = grip.Y, Constraint = grip.Constraint.ToString() });
+                }
+                if (capture.TotalGripCount > GraphMapperStateProjection.MaximumGrips)
+                    MarkGraphMapperPartial(capture, "Graph Mapper grip capture reached the bounded " + GraphMapperStateProjection.MaximumGrips.ToString(CultureInfo.InvariantCulture) + "-grip limit.");
+
+                int denominator = GraphMapperStateProjection.DefaultSampleCount - 1;
+                for (int i = 0; i < GraphMapperStateProjection.DefaultSampleCount; i++)
+                {
+                    try
+                    {
+                        double normalizedInput = denominator <= 0 ? 0.0 : (double)i / denominator;
+                        double normalizedOutput = graph.ValueAt(normalizedInput);
+                        double mappedInput = container.ToX(normalizedInput);
+                        double mappedOutput = container.ToY(normalizedOutput);
+                        if (!Finite(normalizedOutput) || !Finite(mappedInput) || !Finite(mappedOutput)) throw new InvalidOperationException("non-finite sample");
+                        capture.Samples.Add(new GraphMapperSampleState
+                        {
+                            NormalizedInput = normalizedInput,
+                            NormalizedOutput = normalizedOutput,
+                            MappedInput = mappedInput,
+                            MappedOutput = mappedOutput
+                        });
+                    }
+                    catch
+                    {
+                        MarkGraphMapperPartial(capture, "One or more bounded Graph Mapper function samples were unavailable.");
+                    }
+                }
+                return capture;
+            }
+            catch (Exception ex)
+            {
+                return GraphMapperStateProjection.Unavailable("Graph Mapper authored state could not be read safely: " + OneLine(ex.Message));
+            }
+        }
+
         private static void AddMetadata(ContextNode node, string key, object value)
         {
             if (value == null) return;
             if (node.ExecutionMetadata == null) node.ExecutionMetadata = new List<ContextMetadataEntry>();
             node.ExecutionMetadata.Add(new ContextMetadataEntry { Key = key, Value = Convert.ToString(value, CultureInfo.InvariantCulture) ?? "" });
+        }
+
+        private static bool Finite(double value) { return !Double.IsNaN(value) && !Double.IsInfinity(value); }
+
+        private static void MarkGraphMapperPartial(GraphMapperStateCapture capture, string note)
+        {
+            if (capture == null) return;
+            capture.CaptureStatus = "partial";
+            string clean = OneLine(note);
+            if (String.IsNullOrWhiteSpace(clean) || (capture.CaptureNote ?? "").IndexOf(clean, StringComparison.OrdinalIgnoreCase) >= 0) return;
+            capture.CaptureNote = String.IsNullOrWhiteSpace(capture.CaptureNote) ? clean : capture.CaptureNote.Trim() + " " + clean;
         }
 
         private static void AddGuidLinks(ContextNode node, string role, object values)

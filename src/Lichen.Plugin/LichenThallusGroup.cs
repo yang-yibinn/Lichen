@@ -19,6 +19,7 @@ namespace Lichen.Plugin
         private const string PropertyValue = "LichenThallusPropertyValue";
         private readonly List<ContextMetadataEntry> properties = new List<ContextMetadataEntry>();
         private string thallusDescription = "";
+        private GH_Document observedDocument;
 
         public LichenThallusGroup()
         {
@@ -42,14 +43,70 @@ namespace Lichen.Plugin
         public override void AddedToDocument(GH_Document document)
         {
             base.AddedToDocument(document);
+            ObserveDocument(document);
             LichenThallusCommands.RefreshLayouts(document);
         }
 
         public override void RemovedFromDocument(GH_Document document)
         {
+            ObserveDocument(null);
             base.RemovedFromDocument(document);
             LichenThallusCommands.RemoveOwnedEndpoint(this, document);
             LichenThallusCommands.RefreshLayouts(document);
+        }
+
+        public override void MovedBetweenDocuments(GH_Document oldDocument, GH_Document newDocument)
+        {
+            base.MovedBetweenDocuments(oldDocument, newDocument);
+            ObserveDocument(newDocument);
+            ExpireCaches();
+        }
+
+        public override void DocumentContextChanged(GH_Document document, GH_DocumentContext context)
+        {
+            base.DocumentContextChanged(document, context);
+            if (context == GH_DocumentContext.Close || context == GH_DocumentContext.Unloaded)
+                ObserveDocument(null);
+            else if (context == GH_DocumentContext.Open || context == GH_DocumentContext.Loaded)
+            {
+                ObserveDocument(document);
+                ExpireCaches();
+            }
+        }
+
+        private void ObserveDocument(GH_Document document)
+        {
+            if (ReferenceEquals(observedDocument, document)) return;
+            if (observedDocument != null)
+            {
+                observedDocument.ObjectsAdded -= DocumentObjectsChanged;
+                observedDocument.ObjectsDeleted -= DocumentObjectsChanged;
+                observedDocument.UndoStateChanged -= DocumentUndoStateChanged;
+            }
+            observedDocument = document;
+            if (observedDocument != null)
+            {
+                observedDocument.ObjectsAdded += DocumentObjectsChanged;
+                observedDocument.ObjectsDeleted += DocumentObjectsChanged;
+                observedDocument.UndoStateChanged += DocumentUndoStateChanged;
+            }
+        }
+
+        private void DocumentObjectsChanged(object sender, GH_DocObjectEventArgs args)
+        {
+            // GH_Document.ExpireGroups filters on GH_Group.GroupID, so it skips this subtype.
+            // Undo reconstructs new object instances with the same IDs. Drop cached references,
+            // including nested groups, without changing membership or creating undo records.
+            if (ReferenceEquals(sender, observedDocument)) ExpireCaches();
+        }
+
+        private void DocumentUndoStateChanged(object sender, GH_DocUndoEventArgs args)
+        {
+            // Refresh once more after all actions finish, including batch edits which suppress
+            // object events. The normal host repaint then resolves current members by GUID.
+            if (ReferenceEquals(sender, observedDocument)
+                && (args.Operation == GH_UndoOperation.Undo || args.Operation == GH_UndoOperation.Redo))
+                ExpireCaches();
         }
 
         internal void ApplyMetadata(string name, string description, IEnumerable<ContextMetadataEntry> values)

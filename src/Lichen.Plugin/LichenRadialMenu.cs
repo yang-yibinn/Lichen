@@ -7,6 +7,7 @@ using Grasshopper.GUI;
 using Grasshopper.GUI.Canvas;
 using Grasshopper.GUI.Canvas.Interaction;
 using Grasshopper.Kernel;
+using Lichen.Core;
 
 namespace Lichen.Plugin
 {
@@ -33,10 +34,9 @@ namespace Lichen.Plugin
             {
                 List<string> roots = LichenChainSelection.SelectedRootIds(canvas.Document);
                 bool canCreate = LichenThallusCommands.CanCreate(canvas.Document);
-                if (roots.Count == 0 && !canCreate) return;
+                if (roots.Count == 0 && !canCreate && canvas.Document.Nested) return;
                 Point controlPosition = canvas.CursorControlPosition;
-                PointF canvasPosition = canvas.CursorCanvasPosition;
-                canvas.BeginInvoke(new MethodInvoker(delegate { InstallCompanion(canvas, roots, canCreate, controlPosition, canvasPosition); }));
+                canvas.BeginInvoke(new MethodInvoker(delegate { InstallCompanion(canvas, roots, canCreate, controlPosition); }));
             }
             catch
             {
@@ -44,15 +44,20 @@ namespace Lichen.Plugin
             }
         }
 
-        private static void InstallCompanion(GH_Canvas canvas, IEnumerable<string> roots, bool canCreate, Point controlPosition, PointF canvasPosition)
+        private static void InstallCompanion(GH_Canvas canvas, IEnumerable<string> roots, bool canCreate, Point controlPosition)
         {
             if (canvas == null || canvas.IsDisposed || canvas.Document == null) return;
             try
             {
                 GH_RadialMenuInteraction nativeMenu = canvas.ActiveInteraction as GH_RadialMenuInteraction;
-                if (nativeMenu == null || nativeMenu is LichenRadialMenuInteraction) return;
-                GH_CanvasMouseEvent mouseEvent = new GH_CanvasMouseEvent(controlPosition, canvasPosition, MouseButtons.Middle, 1, 0);
-                canvas.ActiveInteraction = new LichenRadialMenuInteraction(canvas, mouseEvent, roots, canCreate);
+                // Do not replace another extension's custom radial interaction.
+                if (nativeMenu == null || nativeMenu.GetType() != typeof(GH_RadialMenuInteraction)) return;
+                RadialMenuLayout layout = RadialMenuLayout.Place(canvas.ClientSize.Width, canvas.ClientSize.Height,
+                    controlPosition.X, controlPosition.Y, GH_GraphicsUtil.UiScale);
+                if (!layout.Fits) return; // Keep the native menu on very small canvases.
+                Point center = new Point(layout.CenterX, layout.CenterY);
+                GH_CanvasMouseEvent mouseEvent = new GH_CanvasMouseEvent(center, canvas.Viewport.UnprojectPoint(center), MouseButtons.Middle, 1, 0);
+                canvas.ActiveInteraction = new LichenRadialMenuInteraction(canvas, mouseEvent, roots, canCreate, layout);
                 canvas.Invalidate();
             }
             catch
@@ -64,7 +69,7 @@ namespace Lichen.Plugin
 
     internal sealed class LichenRadialMenuInteraction : GH_RadialMenuInteraction
     {
-        private enum CompanionAction { None, SelectChain, CreateThallus }
+        private enum CompanionAction { None, SelectChain, CreateThallus, Spotlight }
 
         private const int SourceIconSize = 96;
         private const float DisplayIconSize = 24F;
@@ -75,20 +80,27 @@ namespace Lichen.Plugin
         private static readonly Bitmap ThallusIcon = LichenInfo.CreateThallusIcon(SourceIconSize);
         private static readonly Bitmap ThallusHoverIcon = LichenInfo.CreateThallusIcon(SourceIconSize, HoverColor);
         private static readonly Bitmap ThallusTooltipIcon = LichenInfo.CreateThallusIcon(24);
+        private static readonly Bitmap SpotlightIcon = LichenInfo.CreateSpotlightIcon(SourceIconSize);
+        private static readonly Bitmap SpotlightHoverIcon = LichenInfo.CreateSpotlightIcon(SourceIconSize, HoverColor);
+        private static readonly Bitmap SpotlightTooltipIcon = LichenInfo.CreateSpotlightIcon(24);
         private readonly List<string> rootObjectIds;
         private readonly bool showSelectChain;
         private readonly bool showCreateThallus;
         private CompanionAction hoverAction;
         private bool actionInvoked;
         private bool destroyed;
+        private readonly RadialMenuLayout layout;
+        private bool openingReleasePending = true;
 
-        internal LichenRadialMenuInteraction(GH_Canvas canvas, GH_CanvasMouseEvent eventArgs, IEnumerable<string> roots, bool canCreate)
+        internal LichenRadialMenuInteraction(GH_Canvas canvas, GH_CanvasMouseEvent eventArgs, IEnumerable<string> roots, bool canCreate, RadialMenuLayout layout)
             : base(canvas, eventArgs)
         {
+            this.layout = layout;
             rootObjectIds = new List<string>(roots ?? new string[0]);
             showSelectChain = rootObjectIds.Count > 0;
             showCreateThallus = canCreate;
             canvas.CanvasPostPaintWidgets += CanvasPostPaintWidgets;
+            canvas.Resize += CanvasResized;
         }
 
         public override bool TooltipEnabled { get { return true; } }
@@ -101,6 +113,15 @@ namespace Lichen.Plugin
         public override void SetupTooltip(PointF point, GH_TooltipDisplayEventArgs eventArgs)
         {
             CompanionAction action = ActionAtCanvasPoint(point);
+            if (action == CompanionAction.Spotlight)
+            {
+                eventArgs.Title = "Spotlight";
+                eventArgs.Text = "Spotlight";
+                eventArgs.Description = LichenPriority.Spotlight.IsEnabled(Canvas) ? "Turn off dependency highlights and the legend." : "Highlight top-level third-party components. Adjust layers and focus in the legend.";
+                eventArgs.Icon = SpotlightTooltipIcon;
+                eventArgs.Region = CompanionBounds(Canvas, action);
+                return;
+            }
             if (action == CompanionAction.SelectChain)
             {
                 eventArgs.Title = "Select chain";
@@ -124,6 +145,7 @@ namespace Lichen.Plugin
 
         public override GH_ObjectResponse RespondToMouseDown(GH_Canvas canvas, GH_CanvasMouseEvent eventArgs)
         {
+            openingReleasePending = false;
             CompanionAction action = ActionAtControlPoint(canvas, eventArgs);
             if (action != CompanionAction.None) return InvokeAction(canvas, action);
             return base.RespondToMouseDown(canvas, eventArgs);
@@ -143,6 +165,10 @@ namespace Lichen.Plugin
 
         public override GH_ObjectResponse RespondToMouseUp(GH_Canvas canvas, GH_CanvasMouseEvent eventArgs)
         {
+            bool ignoreOpeningRelease = openingReleasePending && eventArgs != null && eventArgs.Button == MouseButtons.Middle
+                && layout.IsStationaryOpeningRelease(eventArgs.ControlLocation.X, eventArgs.ControlLocation.Y);
+            openingReleasePending = false;
+            if (ignoreOpeningRelease) return GH_ObjectResponse.Handled;
             CompanionAction action = ActionAtControlPoint(canvas, eventArgs);
             if (action != CompanionAction.None) return InvokeAction(canvas, action);
             return base.RespondToMouseUp(canvas, eventArgs);
@@ -153,14 +179,29 @@ namespace Lichen.Plugin
             if (!destroyed)
             {
                 destroyed = true;
-                if (Canvas != null) Canvas.CanvasPostPaintWidgets -= CanvasPostPaintWidgets;
+                if (Canvas != null)
+                {
+                    Canvas.CanvasPostPaintWidgets -= CanvasPostPaintWidgets;
+                    Canvas.Resize -= CanvasResized;
+                }
             }
             base.Destroy();
+        }
+
+        private void CanvasResized(object sender, EventArgs eventArgs)
+        {
+            // Dismiss instead of rearranging hit areas under the pointer during a resize.
+            if (Canvas != null && ReferenceEquals(Canvas.ActiveInteraction, this))
+            {
+                Canvas.ActiveInteraction = null;
+                Canvas.Invalidate();
+            }
         }
 
         private CompanionAction ActionAtControlPoint(GH_Canvas canvas, GH_CanvasMouseEvent eventArgs)
         {
             if (actionInvoked || canvas == null || eventArgs == null || eventArgs.Button == MouseButtons.Right) return CompanionAction.None;
+            if (canvas.Document != null && !canvas.Document.Nested && CompanionBounds(canvas, CompanionAction.Spotlight).Contains(eventArgs.ControlLocation)) return CompanionAction.Spotlight;
             if (showSelectChain && CompanionBounds(canvas, CompanionAction.SelectChain).Contains(eventArgs.ControlLocation)) return CompanionAction.SelectChain;
             if (showCreateThallus && CompanionBounds(canvas, CompanionAction.CreateThallus).Contains(eventArgs.ControlLocation)) return CompanionAction.CreateThallus;
             return CompanionAction.None;
@@ -172,6 +213,7 @@ namespace Lichen.Plugin
             {
                 if (Canvas == null) return CompanionAction.None;
                 Point controlPoint = Point.Round(Canvas.Viewport.ProjectPoint(point));
+                if (Canvas.Document != null && !Canvas.Document.Nested && CompanionBounds(Canvas, CompanionAction.Spotlight).Contains(controlPoint)) return CompanionAction.Spotlight;
                 if (showSelectChain && CompanionBounds(Canvas, CompanionAction.SelectChain).Contains(controlPoint)) return CompanionAction.SelectChain;
                 if (showCreateThallus && CompanionBounds(Canvas, CompanionAction.CreateThallus).Contains(controlPoint)) return CompanionAction.CreateThallus;
             }
@@ -184,6 +226,7 @@ namespace Lichen.Plugin
             actionInvoked = true;
             if (action == CompanionAction.SelectChain) LichenChainSelection.Select(canvas, rootObjectIds);
             else if (action == CompanionAction.CreateThallus) LichenThallusCommands.CreateFromSelection(canvas);
+            else if (action == CompanionAction.Spotlight) LichenPriority.Spotlight.Toggle(canvas);
             return GH_ObjectResponse.Release;
         }
 
@@ -194,6 +237,7 @@ namespace Lichen.Plugin
             {
                 if (showSelectChain) DrawCompanion(canvas, CompanionAction.SelectChain, SelectIcon, SelectHoverIcon);
                 if (showCreateThallus) DrawCompanion(canvas, CompanionAction.CreateThallus, ThallusIcon, ThallusHoverIcon);
+                if (canvas.Document != null && !canvas.Document.Nested) DrawCompanion(canvas, CompanionAction.Spotlight, SpotlightIcon, SpotlightHoverIcon);
             }
             catch
             {
@@ -207,7 +251,7 @@ namespace Lichen.Plugin
             if (graphics == null) return;
             Rectangle bounds = CompanionBounds(canvas, action);
             PointF center = new PointF(bounds.Left + bounds.Width * 0.5F, bounds.Top + bounds.Height * 0.5F);
-            float scale = Math.Max(1F, GH_GraphicsUtil.UiScale);
+            float scale = layout.Scale;
             int iconSize = Math.Max(18, (int)Math.Round(DisplayIconSize * scale));
             float iconRadius = iconSize * 0.5F;
             Point radialCenter = ControlPointDown;
@@ -233,7 +277,8 @@ namespace Lichen.Plugin
                             graphics.DrawLine(spoke, start, end);
                         }
                     }
-                    Bitmap visible = hoverAction == action && hoverIcon != null ? hoverIcon : icon;
+                    bool active = action == CompanionAction.Spotlight && LichenPriority.Spotlight.IsEnabled(canvas);
+                    Bitmap visible = (hoverAction == action || active) && hoverIcon != null ? hoverIcon : icon;
                     if (visible != null)
                     {
                         Rectangle iconBounds = new Rectangle((int)Math.Round(center.X - iconSize * 0.5F), (int)Math.Round(center.Y - iconSize * 0.5F), iconSize, iconSize);
@@ -251,19 +296,8 @@ namespace Lichen.Plugin
 
         private Rectangle CompanionBounds(GH_Canvas canvas, CompanionAction action)
         {
-            float scale = Math.Max(1F, GH_GraphicsUtil.UiScale);
-            int size = Math.Max(30, (int)Math.Round(34F * scale));
-            int offsetX = (int)Math.Round((action == CompanionAction.CreateThallus ? -94F : -65F) * scale);
-            int offsetY = (int)Math.Round((action == CompanionAction.CreateThallus ? 0F : -63F) * scale);
-            int x = ControlPointDown.X + offsetX - size / 2;
-            int y = ControlPointDown.Y + offsetY - size / 2;
-            if (canvas != null)
-            {
-                const int margin = 4;
-                x = Math.Max(margin, Math.Min(x, canvas.ClientSize.Width - size - margin));
-                y = Math.Max(margin, Math.Min(y, canvas.ClientSize.Height - size - margin));
-            }
-            return new Rectangle(x, y, size, size);
+            RadialButtonBounds bounds = layout.Button(action == CompanionAction.SelectChain ? 0 : action == CompanionAction.CreateThallus ? 1 : 2);
+            return new Rectangle(bounds.Left, bounds.Top, bounds.Size, bounds.Size);
         }
 
     }

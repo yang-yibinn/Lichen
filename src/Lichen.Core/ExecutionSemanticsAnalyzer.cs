@@ -122,16 +122,29 @@ namespace Lichen.Core
 
             if (runtime == "galapagoscomponents.galapagosobject" || ContainsAny(text, "galapagos", "evolutionary solver") || links.Any(l => l.Role == "genome" || l.Role == "fitness"))
             {
-                List<ContextControlLink> genomeLinks = links.Where(l => l.Role == "genome").ToList();
+                List<ContextControlLink> genomeLinks = DistinctLinks(links.Where(l => l.Role == "genome"));
+                List<ContextControlLink> capturedGenomeLinks = genomeLinks.Where(l => nodes.ContainsKey(l.TargetNodeId)).ToList();
+                List<ContextControlLink> unresolvedGenomeReferences = genomeLinks.Where(l => !nodes.ContainsKey(l.TargetNodeId)).ToList();
                 ContextControlLink fitnessLink = links.FirstOrDefault(l => l.Role == "fitness");
                 string behavior = "Controls repeated whole-definition evaluations for optimization";
-                if (genomeLinks.Count > 0) behavior += " using " + genomeLinks.Count + " linked genome" + (genomeLinks.Count == 1 ? "" : "s") + " (" + DescribeTargets(genomeLinks, nodes) + ")";
-                if (fitnessLink != null) behavior += " and fitness value " + TargetName(fitnessLink, nodes);
+                if (capturedGenomeLinks.Count > 0)
+                {
+                    string captured = unresolvedGenomeReferences.Count == 0 ? "" : " captured";
+                    behavior += " using " + capturedGenomeLinks.Count + captured + " linked genome" + (capturedGenomeLinks.Count == 1 ? "" : "s") + " (" + DescribeTargets(capturedGenomeLinks, nodes) + ")";
+                }
+                if (fitnessLink != null && nodes.ContainsKey(fitnessLink.TargetNodeId)) behavior += " and fitness value " + TargetName(fitnessLink, nodes);
                 behavior += ".";
+                if (unresolvedGenomeReferences.Count > 0)
+                {
+                    behavior += " Galapagos also reports " + unresolvedGenomeReferences.Count + " unresolved or out-of-scope genome reference" + (unresolvedGenomeReferences.Count == 1 ? "" : "s")
+                        + " (" + String.Join(", ", unresolvedGenomeReferences.Select(l => l.TargetNodeId).ToArray()) + "); "
+                        + (capturedGenomeLinks.Count == 0 ? "no captured linked genomes are inferred from those references." : "those references are not counted as captured linked genomes.");
+                }
+                if (fitnessLink != null && !nodes.ContainsKey(fitnessLink.TargetNodeId)) behavior += " Galapagos reports an unresolved or out-of-scope fitness reference (" + fitnessLink.TargetNodeId + ").";
                 string solver = Metadata(node, "solver");
                 if (!String.IsNullOrWhiteSpace(solver)) behavior += " Solver mode: " + solver + ".";
                 if (String.Equals(Metadata(node, "runtimeLimitEnabled"), "True", StringComparison.OrdinalIgnoreCase) && !String.IsNullOrWhiteSpace(Metadata(node, "runtimeLimit"))) behavior += " Runtime limit: " + Metadata(node, "runtimeLimit") + ".";
-                if (fitnessLink != null)
+                if (fitnessLink != null && nodes.ContainsKey(fitnessLink.TargetNodeId))
                 {
                     string construction = DescribeFitnessConstruction(fitnessLink.TargetNodeId, document, nodes);
                     if (!String.IsNullOrWhiteSpace(construction)) behavior += " " + construction;
@@ -209,9 +222,18 @@ namespace Lichen.Core
             foreach (ContextControlLink link in node.ControlLinks ?? new List<ContextControlLink>())
             {
                 ContextNode target;
-                string name = nodes.TryGetValue(link.TargetNodeId, out target) ? DisplayName(target) : link.TargetNodeId;
-                yield return link.Role + " link to " + name;
+                if (nodes.TryGetValue(link.TargetNodeId, out target)) yield return link.Role + " link to " + DisplayName(target);
+                else yield return link.Role + " reference to unresolved or out-of-scope " + link.TargetNodeId;
             }
+        }
+
+        private static List<ContextControlLink> DistinctLinks(IEnumerable<ContextControlLink> links)
+        {
+            return links.Where(link => link != null && !String.IsNullOrWhiteSpace(link.TargetNodeId))
+                .GroupBy(link => link.TargetNodeId, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .OrderBy(link => link.TargetNodeId, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         private static string DescribeTargets(IEnumerable<ContextControlLink> links, Dictionary<string, ContextNode> nodes)
