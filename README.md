@@ -18,7 +18,7 @@ Developed by Yibin Yang at Adrian Smith + Gordon Gill Architecture (AS+GG).
 
 ## Requirements
 
-- Rhino 8 for Windows; built against SDK 8.0.23304.9001. Earlier/later service-release and runtime-mode host validation remains incomplete; the previous public target was 8.30+.
+- Rhino 8 for Windows; built against SDK 8.0.23304.9001.
 - Grasshopper 1
 
 ## Installation
