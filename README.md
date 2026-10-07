@@ -33,6 +33,8 @@ Download **Lichen-0.8.3.zip** and its checksum from [GitHub Releases](https://gi
 
 For a persistent scope, place the **Lichen** component at the end of a workflow. Connect a result to X for an inferred upstream closure, or connect one or more outermost Thallus boundary outputs to T for exact author-defined workflow membership; X and T are mutually exclusive on one Lichen component. Outermost Thallus identities can connect directly or pass through native Merge, Jitter's Values path, and Relay, with the validated runtime order preserved in export. Create a Thallus by selecting components and choosing the native-style **Create Thallus** companion in the empty left slot of Grasshopper's middle-click radial menu. The T port appears directly on the outermost Thallus boundary, while nested Thalli do not expose an independent output. Thalli can store a description and key/value properties, and selecting a Thallus alone is sufficient for selection-based export through the top Lichen menu.
 
+![Thallus workflow: define a region, add a name and description, and export with context](assets/branding/thallus-workflow.jpg)
+
 Lichen supports selected-only, immediate-upstream, all-upstream, entire-document, and persistent Export Root scopes. Brief, Technical, and Exact detail levels range from a concise workflow handoff to a complete JSON-backed graph representation. Technical output disambiguates colliding cluster and port labels and reports bounded, already-computed data-tree paths when they carry useful topology. Every export includes a deterministic Lichen provenance seal, and the dialog reports exact Markdown and JSON character and UTF-8 byte sizes. The Exact JSON contract is documented in [`docs/context-schema.md`](docs/context-schema.md).
 
 ## New in 0.8.3
