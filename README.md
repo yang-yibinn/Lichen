@@ -47,6 +47,8 @@ Lichen supports selected-only, immediate-upstream, all-upstream, entire-document
 
 Toggle **Spotlight** from the lower-left radial icon or empty-canvas right-click menu. Its upper-right legend offers Settings, collapse, and close. Counts and highlights cover at most 500 eligible top-level objects; partial coverage is disclosed. No Spotlight state is saved in the definition.
 
+![Spotlight: identify third-party components and custom scripts, then focus highlights by plugin assembly or script language](assets/branding/spotlight-workflow.jpg)
+
 See [release notes and validation limits](docs/release-notes-0.8.3.md). Curve Descriptor, Descriptor to Curve, Apply Curve Edit, and curve-snapshot inclusion are not part of this release.
 
 ## Privacy and behavior
